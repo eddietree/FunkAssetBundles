@@ -1,3 +1,7 @@
+# Info
+This is the asset bundle management we're using at Funktronic Labs. 
+It's provided here as-is, with no support. 
+
 ## Asset Bundles
 
 AssetBundles are not used by default in the Editor. You can force the editor to use them by changing `AssetBundleService.USE_ASSETDATABASE` to true. 
