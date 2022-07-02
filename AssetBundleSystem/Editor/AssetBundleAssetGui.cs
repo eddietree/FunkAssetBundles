@@ -38,19 +38,24 @@
 
         private static void OnPostHeaderGui(Editor editor)
         {
+            if(!EditorUtility.IsPersistent(editor.target))
+            {
+                return;
+            }
+
             // only do anything if we're selecting exactly 1 asset 
             if (editor.targets == null || editor.targets.Length != 1)
             {
-                _previouslySelected = null;
                 return;
             }
 
             var targetObject = editor.target;
             var targetType = targetObject.GetType();
 
-
             // ignore folders or other objects that do not make sense to put in bundles 
             if (targetType == typeof(DefaultAsset)
+                || targetType == typeof(Animation)
+                || targetType == typeof(AnimationClip)
                 || targetType == typeof(AssetBundleData)
                 || targetType == typeof(MonoImporter)
                 || targetType == typeof(AssemblyDefinitionImporter)
