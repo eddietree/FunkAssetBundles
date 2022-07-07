@@ -134,7 +134,21 @@
 
                         if (AssetBundleService.EditorFindContainerBundle(GUID) == null)
                         {
-                            AssetBundleService.EnsureReferenceInAnyBundle(GUID);
+                            AssetBundleData defaultBundle = null;
+
+                            var attributes = fieldInfo.GetCustomAttributes(true);
+                            foreach(var attribute in attributes)
+                            {
+                                if(attribute as AssetReferenceTargetBundleAttribute != null)
+                                {
+                                    var targetBundleAttribute = (AssetReferenceTargetBundleAttribute)attribute;
+                                    var targetBundle = targetBundleAttribute.defaultBundleName;
+                                    defaultBundle = AssetBundleService.EditorFindBundleByName(targetBundle);
+                                    break; 
+                                }
+                            }
+
+                            AssetBundleService.EnsureReferenceInAnyBundle(GUID, defaultBundle);
                         }
                     }
 
@@ -202,6 +216,16 @@
         }
     }
 #endif
+
+    public class AssetReferenceTargetBundleAttribute : System.Attribute
+    {
+        public string defaultBundleName;
+
+        public AssetReferenceTargetBundleAttribute(string defaultBundleName)
+        {
+            this.defaultBundleName = defaultBundleName; 
+        }
+    }
 
     /// <summary>
     /// Use either this struct or its string to load objects from asset bundles via Services.assetBundles.LoadAsync(); 
