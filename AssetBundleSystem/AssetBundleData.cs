@@ -631,34 +631,7 @@ namespace FunkAssetBundles
                         // if one asset is somehow in two bundles, remove it from the other bundles (stay in selected bundle) 
                         if (GUILayout.Button("remove our assets from other bundles"))
                         {
-                            foreach (var otherBundle in _assetBundleListCache)
-                            {
-                                if (otherBundle == instance)
-                                {
-                                    continue;
-                                }
-
-                                var toRemove = new List<AssetBundleReferenceData>();
-
-                                foreach (var ourAsset in instance.Assets)
-                                {
-                                    foreach (var theirAsset in otherBundle.Assets)
-                                    {
-                                        if (ourAsset.GUID.Equals(theirAsset.GUID, System.StringComparison.Ordinal))
-                                        {
-                                            toRemove.Add(theirAsset);
-                                        }
-                                    }
-                                }
-
-                                foreach (var remove in toRemove)
-                                {
-                                    otherBundle.Assets.Remove(remove);
-                                    Debug.Log($"removed {remove.GUID} ({remove.AssetBundleReference}) from {otherBundle.name}", otherBundle);
-                                }
-
-                                EditorUtility.SetDirty(otherBundle);
-                            }
+                            instance.EditorRemoveOurAssetsFromOtherBundles(); 
                         }
 
                         if (GUILayout.Button("Print NULL References"))
@@ -1261,6 +1234,49 @@ namespace FunkAssetBundles
             EditorUtility.SetDirty(this);
         }
 
+
+    public void EditorRemoveOurAssetsFromOtherBundles()
+    {
+        var assetList = new List<AssetBundleData>();
+        AssetDatabaseE.LoadAssetsOfType(assetList);
+
+        var any_duplicates = false;
+
+        foreach (var otherBundle in assetList)
+        {
+            if (otherBundle == this)
+            {
+                continue;
+            }
+
+            var toRemove = new List<AssetBundleReferenceData>();
+
+            foreach (var ourAsset in this.Assets)
+            {
+                foreach (var theirAsset in otherBundle.Assets)
+                {
+                    if (ourAsset.GUID.Equals(theirAsset.GUID, System.StringComparison.Ordinal))
+                    {
+                        toRemove.Add(theirAsset);
+                    }
+                }
+            }
+
+            foreach (var remove in toRemove)
+            {
+                otherBundle.Assets.Remove(remove);
+                any_duplicates = true; 
+                Debug.Log($"removed {remove.GUID} ({remove.AssetBundleReference}) from {otherBundle.name}", otherBundle);
+            }
+
+            EditorUtility.SetDirty(otherBundle);
+        }
+
+        if(!any_duplicates)
+        {
+            Debug.Log($"No duplicates found for {this.name}'s assets.");
+        }
+    }
 #endif
 
     }
