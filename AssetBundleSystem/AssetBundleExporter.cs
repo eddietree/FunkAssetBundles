@@ -381,6 +381,20 @@
                 RecursiveFolderCopy(childSrcFolder, childDstFolder);
             }
         }
+
+        
+    [MenuItem("Build System/Asset Bundles/Helper/Fix Duplicates")]
+    public static void FixDuplicatesAutomatically()
+    {
+        var results = new List<AssetBundleData>();
+        AssetDatabaseE.LoadAssetsOfType(results);
+
+        for (var i = 0; i < results.Count; ++i)
+        {
+            var bundle = results[i];
+                bundle.EditorRemoveOurAssetsFromOtherBundles();
+        }
+    }
 #endif
     }
 }
