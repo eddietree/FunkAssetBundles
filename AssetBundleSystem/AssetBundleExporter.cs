@@ -129,6 +129,9 @@
                 return null;
             }
 
+            Debug.LogFormat("AssetBundleExporter.BuildBundlesForTarget: Removing any duplicate bundle references...");
+            FixDuplicatesAutomatically();
+
             Debug.LogFormat("AssetBundleExporter.BuildBundlesForTarget: refreshing asset references...");
             AssetBundleService.EditorRefreshAssetBundleListOnPrefab();
             AssetBundleService.EditorUpdateBundleReferencesForBuilds();
