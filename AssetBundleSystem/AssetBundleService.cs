@@ -300,75 +300,93 @@
             // Caching.ClearCache(); 
         }
 
-        public void Initialize()
+        public Coroutine Initialize()
         {
-#if UNITY_EDITOR
-            if (USE_ASSETDATABASE)
+            if(_initializeAsyncRoutine != null)
             {
-                //Debug.Log($"Editor is not using AssetBundles. All requests will be artificially {DEBUG_DELAY_CONSTANT} seconds long. Set USE_ASSETDATABASE to false to use AssetBundles in the editor.");
-
-                for (var i = 0; i < AssetBundleDatas.Count; ++i)
-                {
-                    var bundle = AssetBundleDatas[i];
-                    bundle.RefreshLookupTable();
-                }
-
-                return;
+                StopCoroutine(_initializeAsyncRoutine);
             }
-#endif
+
+            _initializeAsyncRoutine = StartCoroutine(DoInitializeAsync());
+            return _initializeAsyncRoutine;
+        }
+
+        public bool GetIsInitialized()
+        {
+            return _initialized;
+        }
+
+        private IEnumerator DoInitializeAsync()
+        {
+            _initialized = false;
+
+            #if UNITY_EDITOR
+                if (USE_ASSETDATABASE)
+                {
+                    //LogService.Log($"Editor is not using AssetBundles. All requests will be artificially {DEBUG_DELAY_CONSTANT} seconds long. Set USE_ASSETDATABASE to false to use AssetBundles in the editor.");
+
+                    for (var i = 0; i < AssetBundleDatas.Count; ++i)
+                    {
+                        var bundle = AssetBundleDatas[i];
+                        bundle.RefreshLookupTable();
+                    }
+
+                    _initialized = true;
+                    yield break; 
+                }
+            #endif
 
             var stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Start();
 
-            Debug.LogFormat("AssetBundleService: preloading {0} asset bundles (not their contents)...", AssetBundleDatas.Count);
-
+            // batch together loading bundles, async 
+            var assetBundleRequests = new List<Coroutine>();
             for (var i = 0; i < AssetBundleDatas.Count; ++i)
             {
                 var assetBundleData = AssetBundleDatas[i];
 
-                // initialize the quick lookup table 
-                assetBundleData.RefreshLookupTable();
-
-                var assetBundleDataName = GetBundleFilenameFromBundleName(Application.platform, assetBundleData.name);
-                var assetBundleRoot = GetBundlesDeployFolder();
-                var assetBundleRef = $"{assetBundleRoot}/{assetBundleDataName}";
-
-                Debug.LogFormat("AssetBundleService: {0}: preloading {1}", i, assetBundleRef);
-
-                try
-                {
-                    var assetBundle = AssetBundle.LoadFromFile(assetBundleRef);
-                    if (assetBundle == null)
-                    {
-                        Debug.LogErrorFormat("AssetBundleService: * failed to load {0}", assetBundleRef);
-                        continue;
-                    }
-
-                    var assetNames = assetBundle.GetAllAssetNames();
-
-                    Debug.LogFormat("AssetBundleService: * loaded {0} which contains {1} assets.", assetBundle.name, assetNames.Length);
-
-                    // debug print names 
-                    // var assetNames = assetBundle.GetAllAssetNames();
-                    // foreach(var name in assetNames)
-                    // {
-                    //     Debug.Log(name);
-                    // }
-
-                    _bundleCache.Add(assetBundleData.name, assetBundle);
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogException(e);
-                }
+                var routine = StartCoroutine(DoAsyncInitializeBundle(assetBundleData));
+                assetBundleRequests.Add(routine); 
             }
 
-            stopwatch.Stop();
+            // wait on all bundles to be loaded 
+            for(var i = 0; i < assetBundleRequests.Count; ++i)
+            {
+                yield return assetBundleRequests[i];
+            }
 
-            Debug.LogFormat("AssetBundleService: finished preloading {0} asset bundles (completed in {1}ms)", AssetBundleDatas.Count, stopwatch.ElapsedMilliseconds);
+            _initialized = true; 
+            stopwatch.Stop();
 
             if (_prewarmRoutine != null) StopCoroutine(_prewarmRoutine);
             _prewarmRoutine = StartCoroutine(DoHandlePrewarmAssets());
+        }
+
+        private IEnumerator DoAsyncInitializeBundle(AssetBundleData assetBundleData)
+        {
+            // initialize the quick lookup table 
+            assetBundleData.RefreshLookupTable();
+
+            var assetBundleDataName = GetBundleFilenameFromBundleName(Application.platform, assetBundleData.name);
+            var assetBundleRoot = GetBundlesDeployFolder();
+            var assetBundleRef = $"{assetBundleRoot}/{assetBundleDataName}";
+
+            var assetBundleRequest = AssetBundle.LoadFromFileAsync(assetBundleRef);
+
+            while (!assetBundleRequest.isDone)
+            {
+                yield return null;
+            }
+
+            var assetBundle = assetBundleRequest.assetBundle;
+            if (assetBundle == null)
+            {
+                Debug.LogErrorFormat("AssetBundleService: * failed to load {0}", assetBundleRef);
+                yield break;
+            }
+
+            var assetNames = assetBundle.GetAllAssetNames();
+            _bundleCache.Add(assetBundleData.name, assetBundle);
         }
 
         public void DeInitialize()
@@ -1036,6 +1054,22 @@
             get
             {
                 return assetBundleOperation != null && !assetBundleOperation.isDone;
+            }
+        }
+    }
+
+    public class WaitAssetBundleServiceReady : CustomYieldInstruction
+    {
+        public WaitAssetBundleServiceReady()
+        {
+
+        }
+
+        public override bool keepWaiting
+        {
+            get
+            {
+                return AssetBundleService.Instance == null || !AssetBundleService.Instance.GetIsInitialized();
             }
         }
     }
