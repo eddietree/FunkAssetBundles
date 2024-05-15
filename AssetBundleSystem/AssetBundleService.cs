@@ -96,6 +96,7 @@ namespace FunkAssetBundles
         }
 #endif
 
+#if UNITY_EDITOR
         [MenuItem("Build System/Asset Bundles/Settings/Enable Asset Database (no bundles in editor)")]
         public static void EditorCommandEnableAssetDatabase()
         {
@@ -124,6 +125,7 @@ namespace FunkAssetBundles
         {
             return EditorPrefs.GetBool("FunkAssetBundles.EnableAssetDatabase", true);
         }
+#endif
 
         [System.NonSerialized] private Dictionary<string, AssetBundle> _bundleCache = new Dictionary<string, AssetBundle>(System.StringComparer.Ordinal);
         [System.NonSerialized] private Dictionary<string, AssetCache> _assetCache = new Dictionary<string, AssetCache>(System.StringComparer.Ordinal); // key = GUID+SubAssetReference
