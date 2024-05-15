@@ -1,4 +1,6 @@
-﻿namespace FunkAssetBundles
+﻿#pragma warning disable CS0162 // Unreachable code detected
+
+namespace FunkAssetBundles
 {
 
 
@@ -80,8 +82,8 @@
                 return;
             }
 
-            var genericTypeIsSprite = genericType == typeof(Sprite);
-            if (genericTypeIsSprite)
+            var genericTypeHasSubtypes = genericType == typeof(Sprite) || genericType == typeof(Mesh);
+            if (genericTypeHasSubtypes)
             {
                 objectFieldPos.width /= 2f;
             }
@@ -101,7 +103,7 @@
             // check if the object is (missing) 
             if (!string.IsNullOrEmpty(guidString) && _referencedObject == null)
             {
-                _referencedObject = EditorGUI.ObjectField(objectFieldPos, new GUIContent($" !! missing [{guidString}] !! "), _referencedObject, genericType, false);
+                _referencedObject = EditorGUI.ObjectField(objectFieldPos, new GUIContent($"MISSING: {nameProperty.stringValue} [{guidString}]"), _referencedObject, genericType, false);
 
                 if (!GUI.changed)
                 {
@@ -137,14 +139,14 @@
                             AssetBundleData defaultBundle = null;
 
                             var attributes = fieldInfo.GetCustomAttributes(true);
-                            foreach(var attribute in attributes)
+                            foreach (var attribute in attributes)
                             {
-                                if(attribute as AssetReferenceTargetBundleAttribute != null)
+                                if (attribute as AssetReferenceTargetBundleAttribute != null)
                                 {
                                     var targetBundleAttribute = (AssetReferenceTargetBundleAttribute)attribute;
                                     var targetBundle = targetBundleAttribute.defaultBundleName;
                                     defaultBundle = AssetBundleService.EditorFindBundleByName(targetBundle);
-                                    break; 
+                                    break;
                                 }
                             }
 
@@ -157,9 +159,9 @@
                 }
             }
 
-            if (genericTypeIsSprite && _referencedObject != null)
+            if (genericTypeHasSubtypes && _referencedObject != null)
             {
-                Sprite _referencedSprite = null;
+                Object _referencedSprite = null;
 
                 // try and find the current sprite (if defined) 
                 if (_referencedSprite == null && !string.IsNullOrEmpty(subAssetReferenceProperty.stringValue))
@@ -173,7 +175,7 @@
                         {
                             if (asset.name == subAssetReferenceProperty.stringValue)
                             {
-                                var spriteAsset = asset as Sprite;
+                                var spriteAsset = asset as Object;
                                 if (spriteAsset != null)
                                 {
                                     _referencedSprite = spriteAsset;
@@ -187,7 +189,7 @@
                 // draw the sprite picker 
                 var spriteFieldRect = objectFieldPos;
                 spriteFieldRect.x += spriteFieldRect.width;
-                _referencedSprite = (Sprite)EditorGUI.ObjectField(spriteFieldRect, (Object)_referencedSprite, typeof(Sprite), false);
+                _referencedSprite = (Object) EditorGUI.ObjectField(spriteFieldRect, (Object)_referencedSprite, typeof(Object), false);
 
                 // store the sprite 
                 if (_referencedSprite != null)
@@ -215,6 +217,18 @@
             return base.GetPropertyHeight(property, label) + 32f;
         }
     }
+
+    public class AssetReferenceCacheAndImporter : AssetPostprocessor
+    {
+        public static Dictionary<string, Object> _editorAssetCache = new Dictionary<string, Object>();
+
+        private static void OnPostprocessAllAssets(string[] importedAssets, string[] deletedAssets, string[] movedAssets, string[] movedFromAssetPaths)
+        {
+            // we could probably be more clever here: only remove keys which were affected
+            // for now though, just clear everything when any asset is imported
+            _editorAssetCache.Clear(); 
+        }
+    }
 #endif
 
     public class AssetReferenceTargetBundleAttribute : System.Attribute
@@ -223,7 +237,7 @@
 
         public AssetReferenceTargetBundleAttribute(string defaultBundleName)
         {
-            this.defaultBundleName = defaultBundleName; 
+            this.defaultBundleName = defaultBundleName;
         }
     }
 
@@ -257,7 +271,7 @@
         public long LocalFileId;
 
 #if UNITY_EDITOR
-        public static AssetReference<T> CreateFromObject(Object obj, bool ensureInBundle, AssetBundleData targetBundle = null) // todo: allow specifying bundle 
+        public static AssetReference<T> CreateFromObject(Object obj, bool ensureInBundle, AssetBundleData targetBundle = null, bool isSubAsset = false) // todo: allow specifying bundle 
         {
             if (obj == null)
             {
@@ -284,7 +298,12 @@
                 }
             }
 
-            if (obj is Sprite)
+            if(obj is Sprite)
+            {
+                isSubAsset = true;
+            }
+
+            if (isSubAsset)
             {
                 assetReference.SubAssetReference = obj.name;
             }
@@ -295,7 +314,7 @@
 
         public override string ToString()
         {
-            return string.Format("{0} {1} [{2}:{3}:{4}]", Name, SubAssetReference, Guid, LocalFileId, LocalFileId);
+            return string.Format("{0} {1} [{2}:{3}]", Name, SubAssetReference, Guid, LocalFileId);
         }
 
         public bool IsValid()
@@ -329,35 +348,36 @@
             return Name;
         }
 
+        public string GetCacheKey()
+        {
+            return Guid + SubAssetReference;
+        }
+
 #if UNITY_EDITOR
-        /// <summary>
-        /// Only use in Editor. 
-        /// </summary>
-        private static Dictionary<string, Object> _editorAssetCache = new Dictionary<string, Object>();
 
         /// <summary>
         /// Only use in Editor scripts. 
         /// loadingFrom is required for updating moved references. optional otherwise. 
         /// </summary>
         /// <returns></returns>
-        public T EditorLoadAsset(Object loadingFrom)
+        public T EditorLoadAsset(Object loadingFrom, bool logDeleted = true)
         {
             UnityEngine.Profiling.Profiler.BeginSample("EditorLoadAsset");
 
             if (IsValid())
             {
-                // var assetCacheKey = $"{Guid}_{LocalFileId}_{SubAssetReference}";
-                // if(_editorAssetCache.TryGetValue(assetCacheKey, out Object cacheResult))
-                // {
-                //     if(cacheResult != null)
-                //     {
-                //         return (T) cacheResult;
-                //     }
-                //     else
-                //     {
-                //         _editorAssetCache.Remove(assetCacheKey); 
-                //     }
-                // }
+                var assetCacheKey = $"{Guid}_{LocalFileId}_{SubAssetReference}";
+                if(AssetReferenceCacheAndImporter._editorAssetCache.TryGetValue(assetCacheKey, out Object cacheResult))
+                {
+                    if(cacheResult != null)
+                    {
+                        return (T) cacheResult;
+                    }
+                    else
+                    {
+                        AssetReferenceCacheAndImporter._editorAssetCache.Remove(assetCacheKey); 
+                    }
+                }
 
                 var assetPath = AssetDatabase.GUIDToAssetPath(Guid);
                 var asset = AssetDatabase.LoadAssetAtPath<T>(assetPath);
@@ -377,17 +397,33 @@
                     }
                 }
 
+                if (!string.IsNullOrEmpty(SubAssetReference))
+                {
+                    var subAssets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+                    foreach (var subAsset in subAssets)
+                    {
+                        if (subAsset.name == SubAssetReference && subAsset as T != null)
+                        {
+                            asset = (T)subAsset;
+                            break;
+                        }
+                    }
+                }
+
                 if (asset == null)
                 {
-                    Debug.LogError($"{Guid} has been deleted? {assetPath}", loadingFrom);
+                    if(logDeleted)
+                    {
+                        Debug.LogError($"{Name} [{Guid}] has been deleted? {assetPath}", loadingFrom);
+                    }
                 }
 
                 if (asset != null && asset.name != Name)
                 {
-                    if (!string.IsNullOrEmpty(Name))
-                    {
-                        Debug.LogWarning($"AssetReference's Asset was renamed from {Name} to {asset.name} - guid: [{Guid}]", loadingFrom);
-                    }
+                    // if (!string.IsNullOrEmpty(Name))
+                    // {
+                    //     Debug.LogWarning($"AssetReference's Asset was renamed from {Name} to {asset.name} - guid: [{Guid}]", loadingFrom);
+                    // }
 
                     Name = asset.name;
 
@@ -399,7 +435,7 @@
 
                 UnityEngine.Profiling.Profiler.EndSample();
 
-                // _editorAssetCache.Add(assetCacheKey, asset); 
+                AssetReferenceCacheAndImporter._editorAssetCache.Add(assetCacheKey, asset); 
                 return asset;
             }
             else
@@ -411,6 +447,18 @@
             }
         }
 #endif
+
+        public AssetReference<T> Clone()
+        {
+            var newAssetReference = new AssetReference<T>();
+
+            newAssetReference.Name = Name + string.Empty;
+            newAssetReference.SubAssetReference = SubAssetReference + string.Empty;
+            newAssetReference.Guid = Guid + string.Empty;
+            newAssetReference.LocalFileId = LocalFileId;
+
+            return newAssetReference;
+        }
 
         public override bool Equals(object obj)
         {
@@ -507,13 +555,13 @@
 
             var changed = false;
 
-            // Debug.Log($"searching {objectAsset.name}..");
+            // LogService.Log($"searching {objectAsset.name}..");
 
             var objectSerialized = new SerializedObject(objectAsset);
             var objectProperty = objectSerialized.GetIterator();
             while (objectProperty.NextVisible(true))
             {
-                // Debug.Log($"{objectProperty.name} | {objectProperty.type} | {objectProperty.displayName}");
+                // LogService.Log($"{objectProperty.name} | {objectProperty.type} | {objectProperty.displayName}");
 
                 changed = FixAssetBundle(objectAsset, objectProperty, guidList) || changed;
             }
@@ -589,7 +637,7 @@
                     //                 guidProperty.stringValue = guidString;
                     //                 guidProperty.serializedObject.ApplyModifiedProperties();
                     // 
-                    //                 Debug.Log($"fixed broken reference: {guidString}");
+                    //                 LogService.Log($"fixed broken reference: {guidString}");
                     //             }
                     //         }
                     //     }
@@ -643,7 +691,7 @@
                         break;
                     }
 
-                    AssetBundleService.EnsureReferenceInBundle(bundleData, guid);
+                    AssetBundleService.EnsureReferenceInAnyBundle(guid, bundleData);
                 }
             }
             catch (System.Exception e)

@@ -1,10 +1,10 @@
-﻿namespace FunkAssetBundles
+#if UNITY_EDITOR
+namespace FunkAssetBundles
 {
     using System.Collections;
     using System.Collections.Generic;
+    using UnityEditor;
     using UnityEngine;
-    
-#if UNITY_EDITOR
 
     public static class AssetDatabaseE
     {
@@ -40,7 +40,7 @@
             }
 
             return null;
-        }
+        } 
 
         public static void LoadAssetsOfType<T>(List<T> results)
             where T : UnityEngine.Object
@@ -52,6 +52,41 @@
             {
                 var assetPath = UnityEditor.AssetDatabase.GUIDToAssetPath(assetGuid);
                 var asset = UnityEditor.AssetDatabase.LoadAssetAtPath<T>(assetPath);
+
+                if (!results.Contains(asset))
+                {
+                    results.Add(asset);
+                }
+            }
+        }
+
+        public static void LoadAssetsOfType<T>(List<T> results, params System.Type[] validTypes)
+            where T : UnityEngine.Object
+        {
+            var filter = string.Format("t:{0}", typeof(T).Name);
+            var assetGuids = UnityEditor.AssetDatabase.FindAssets(filter);
+
+            foreach (var assetGuid in assetGuids)
+            {
+                var assetPath = UnityEditor.AssetDatabase.GUIDToAssetPath(assetGuid);
+                var asset = UnityEditor.AssetDatabase.LoadAssetAtPath<T>(assetPath);
+
+                var validType = false;
+                var assetType = asset.GetType();
+
+                foreach (var checkType in validTypes)
+                {
+                    if (checkType == assetType || assetType.IsSubclassOf(checkType))
+                    {
+                        validType = true;
+                        break;
+                    }
+                }
+
+                if (!validType)
+                {
+                    continue;
+                }
 
                 if (!results.Contains(asset))
                 {
@@ -144,9 +179,21 @@
             }
         }
 
-        public static void LoadScriptableObjects<C>(List<C> results)
+        public static void LoadScriptableObjects<C>(List<C> results, bool removeNullEntries = false)
             where C : ScriptableObject
         {
+            if(removeNullEntries)
+            {
+                for(var i = results.Count - 1; i >= 0; --i)
+                {
+                    var original = results[i];
+                    if(original == null)
+                    {
+                        results.RemoveAt(i);
+                    }
+                }
+            }
+
             var filter = string.Format("t:{0}", typeof(C).Name);
             var assetGuids = UnityEditor.AssetDatabase.FindAssets(filter);
 
@@ -165,7 +212,18 @@
                 results.Add(scriptable);
             }
         }
-    }
 
-#endif
+        public static bool TryDeleteAsset(Object asset)
+        {
+            var assetPath = UnityEditor.AssetDatabase.GetAssetPath(asset);
+            if(string.IsNullOrEmpty(assetPath))
+            {
+                return false; 
+            }
+
+            UnityEditor.AssetDatabase.DeleteAsset(assetPath); 
+            return true; 
+        }
+    }
 }
+#endif

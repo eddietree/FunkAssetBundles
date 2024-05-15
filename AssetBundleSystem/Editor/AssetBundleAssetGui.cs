@@ -1,11 +1,14 @@
-﻿#if UNITY_EDITOR
-namespace FunkAssetBundles
+﻿namespace FunkAssetBundles
 {
+
+
+#if UNITY_EDITOR
     using System.Collections;
     using System.Collections.Generic;
     using UnityEngine;
     using UnityEditor;
     using UnityEditorInternal;
+    using System.Linq;
 
     [InitializeOnLoad]
     internal static class AssetBundleAssetGui
@@ -25,7 +28,7 @@ namespace FunkAssetBundles
         private static void TryRefreshBundleGuiCache(Editor editor)
         {
             var currentTarget = editor.target;
-            if(currentTarget == _previouslySelected)
+            if (currentTarget == _previouslySelected)
             {
                 return;
             }
@@ -33,12 +36,12 @@ namespace FunkAssetBundles
             _previouslySelected = currentTarget;
 
             AssetDatabase.TryGetGUIDAndLocalFileIdentifier(_previouslySelected, out _cachedGuid, out long localId);
-            RefreshBundleOptions(); 
+            RefreshBundleOptions();
         }
 
         private static void OnPostHeaderGui(Editor editor)
         {
-            if(!EditorUtility.IsPersistent(editor.target))
+            if (!EditorUtility.IsPersistent(editor.target))
             {
                 return;
             }
@@ -55,26 +58,28 @@ namespace FunkAssetBundles
             var targetType = targetObject.GetType();
 
             // ignore folders or other objects that do not make sense to put in bundles 
-            if (targetType == typeof(DefaultAsset) 
+            if (targetType == typeof(DefaultAsset)
                 || targetType == typeof(Animation)
                 || targetType == typeof(AnimationClip)
-                || targetType == typeof(AssetBundleData) 
-                || targetType == typeof(MonoImporter) 
-                || targetType == typeof(AssemblyDefinitionImporter) 
+                || targetType == typeof(AssetBundleData)
+                || targetType == typeof(MonoImporter)
+                || targetType == typeof(AssemblyDefinitionImporter)
                 || targetType == typeof(PluginImporter))
             {
-                return; 
+                return;
             }
+
+            var targetIsSceneAsset = targetType == typeof(SceneAsset); 
 
             // ignore instances of gameobjects / prefabs,  
             var targetGameobject = targetObject as GameObject;
-            if(targetGameobject != null)
+            if (targetGameobject != null)
             {
                 var prefabAssetType = PrefabUtility.GetPrefabAssetType(targetGameobject);
-                if(prefabAssetType == PrefabAssetType.NotAPrefab || targetGameobject.scene != null)
+                if (prefabAssetType == PrefabAssetType.NotAPrefab || targetGameobject.scene != null)
                 {
                     _previouslySelected = null;
-                    return; 
+                    return;
                 }
             }
 
@@ -83,36 +88,54 @@ namespace FunkAssetBundles
             EditorGUILayout.BeginHorizontal();
             {
                 GUILayout.FlexibleSpace();
-                
+
                 EditorGUILayout.BeginHorizontal("GroupBox");
                 // EditorGUILayout.LabelField($"selected: {targetObject.GetType().Name}"); 
 
                 EditorGUILayout.LabelField("funky bundle: ", GUILayout.Width(98f));
 
-                var newBundleIndex = EditorGUILayout.Popup(_assetBundleIndex, _assetBundleDropdownOptions, GUILayout.Width(128f)); 
-                if(newBundleIndex != _assetBundleIndex)
+                var newBundleIndex = EditorGUILayout.Popup(_assetBundleIndex, _assetBundleDropdownOptions, GUILayout.Width(128f));
+                if (newBundleIndex != _assetBundleIndex)
                 {
                     // remove from bundles
-                    if(newBundleIndex == 0)
+                    if (newBundleIndex == 0)
                     {
                         var previousBundle = _assetBundleCache[_assetBundleIndex - 1];
-                        Undo.RecordObject(previousBundle, "removed asset"); 
+                        Undo.RecordObject(previousBundle, "removed asset");
                         previousBundle.EditorRemoveAssetReference(_cachedGuid);
 
-                        if(isMultiTarget)
+                        if (isMultiTarget)
                         {
-                            foreach(var target in editor.targets)
+                            foreach (var target in editor.targets)
                             {
                                 AssetDatabase.TryGetGUIDAndLocalFileIdentifier(target, out string targetGuid, out long targetFileId);
                                 previousBundle.EditorRemoveAssetReference(targetGuid);
                             }
                         }
+
+                        EditorUtility.SetDirty(previousBundle);
                     }
 
                     // add to bundle 
-                    else if(_assetBundleIndex == 0)
+                    else if (_assetBundleIndex == 0)
                     {
                         var newBundle = _assetBundleCache[newBundleIndex - 1];
+
+                        if (newBundle.SceneBundle && !targetIsSceneAsset)
+                        {
+                            Debug.LogError($"Tried to add non SceneAsset to a SceneBundle.", newBundle);
+                            EditorUtility.DisplayDialog("STOP.", "Tried to add non SceneAsset to a SceneBundle. This is not allowed.", "oh........");
+                            return;
+                        }
+
+                        else if (!newBundle.SceneBundle && targetIsSceneAsset)
+                        {
+                            Debug.LogError($"Tried to add SceneAsset to a non SceneBundle.", newBundle);
+                            EditorUtility.DisplayDialog("STOP.", "Tried to add SceneAsset to a non SceneBundle. This is not allowed.", "oh........");
+                            return;
+                        }
+
+
                         Undo.RecordObject(newBundle, "added asset");
                         newBundle.EditorAddAssetReference(_cachedGuid);
 
@@ -124,6 +147,8 @@ namespace FunkAssetBundles
                                 newBundle.EditorAddAssetReference(targetGuid);
                             }
                         }
+
+                        EditorUtility.SetDirty(newBundle);
                     }
 
                     // move from one bundle to another 
@@ -131,6 +156,20 @@ namespace FunkAssetBundles
                     {
                         var previousBundle = _assetBundleCache[_assetBundleIndex - 1];
                         var newBundle = _assetBundleCache[newBundleIndex - 1];
+
+                        if (newBundle.SceneBundle && !targetIsSceneAsset)
+                        {
+                            Debug.LogError($"Tried to add non SceneAsset to a SceneBundle.", newBundle);
+                            EditorUtility.DisplayDialog("STOP.", "Tried to add non SceneAsset to a SceneBundle. This is not allowed.", "oh........");
+                            return;
+                        }
+
+                        else if (!newBundle.SceneBundle && targetIsSceneAsset)
+                        {
+                            Debug.LogError($"Tried to add SceneAsset to a non SceneBundle.", newBundle);
+                            EditorUtility.DisplayDialog("STOP.", "Tried to add SceneAsset to a non SceneBundle. This is not allowed.", "oh........");
+                            return;
+                        }
 
                         Undo.RecordObjects(new Object[] { previousBundle, newBundle }, "moved asset");
 
@@ -146,6 +185,9 @@ namespace FunkAssetBundles
                                 newBundle.EditorAddAssetReference(targetGuid);
                             }
                         }
+
+                        EditorUtility.SetDirty(previousBundle);
+                        EditorUtility.SetDirty(newBundle); 
                     }
 
                     // update stored index 
@@ -153,10 +195,10 @@ namespace FunkAssetBundles
                 }
 
                 EditorGUI.BeginDisabledGroup(_assetBundleIndex == 0);
-                if(GUILayout.Button("view", GUILayout.Width(128f)))
+                if (GUILayout.Button("view", GUILayout.Width(128f)))
                 {
                     var bundle = _assetBundleCache[_assetBundleIndex - 1];
-                    Selection.activeObject = bundle; 
+                    Selection.activeObject = bundle;
                 }
                 EditorGUI.EndDisabledGroup();
                 EditorGUILayout.EndHorizontal();
@@ -170,25 +212,33 @@ namespace FunkAssetBundles
             _assetBundleCache.Clear();
             AssetDatabaseE.LoadAssetsOfType(_assetBundleCache);
 
-            _assetBundleDropdownOptions = new string[_assetBundleCache.Count + 1];
-            _assetBundleDropdownOptions[0] = "no bundle";
+            var options = new List<string>(_assetBundleCache.Count + 1);
+                options.Add("no bundle");
 
             _assetBundleIndex = 0;
 
             for (var i = 0; i < _assetBundleCache.Count; ++i)
             {
                 var bundle = _assetBundleCache[i];
-                bundle.RefreshLookupTable();
+                    bundle.RefreshLookupTable();
 
-                _assetBundleDropdownOptions[i + 1] = bundle.name;
+                if(bundle.HideInLists)
+                {
+                    _assetBundleCache.RemoveAt(i);
+                    --i;
+                    continue;
+                }
+
+                options.Add(bundle.name);
 
                 if (bundle.ContainsAssetRef(_cachedGuid))
                 {
-                    _assetBundleIndex = i + 1;
+                    _assetBundleIndex = options.Count - 1;
                 }
             }
-        }
 
+            _assetBundleDropdownOptions = options.ToArray(); 
+        }
     }
-}
 #endif
+}

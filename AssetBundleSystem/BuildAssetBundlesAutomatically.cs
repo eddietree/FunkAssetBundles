@@ -1,10 +1,13 @@
-#if UNITY_EDITOR
+﻿#pragma warning disable CS0162 // Unreachable code detected
+
 namespace FunkAssetBundles
 {
+#if UNITY_EDITOR
     using UnityEngine;
     using UnityEditor;
     using System.Collections.Generic;
     using System.IO;
+    using System;
 
     /// <summary>
     /// The script gives you choice to whether to build addressable bundles when clicking the build button.
@@ -12,47 +15,96 @@ namespace FunkAssetBundles
     /// </summary>
     public class BuildAssetBundlesAutomatically
     {
+        public const bool AutoDeployBundlesOnPlay = true;
+        public const bool AutoDeployOnlySometimes = true;
+
         [InitializeOnLoadMethod]
         private static void Initialize()
         {
             //BuildPlayerWindow.RegisterBuildPlayerHandler(BuildPlayerHandler);
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+            
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        static void OnBeforeSceneLoad() 
+        { 
+        
+        }
+
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterAssembliesLoaded)]
+        static void OnAfterAssembliesLoaded()
+        {
+            TryDeployBundles(); 
         }
 
         private static void OnPlayModeStateChanged(PlayModeStateChange change)
         {
-            if (AssetBundleService.USE_ASSETDATABASE)
+            if (AssetBundleService.EditorGetAssetDatabaseEnabled())
             {
                 return;
             }
 
             if (change == PlayModeStateChange.EnteredPlayMode)
             {
-                try
+                // TryDeployBundles(); 
+            }
+        }
+
+        private static void TryDeployBundles()
+        {
+            if (AutoDeployBundlesOnPlay)
+            {
+                if (AutoDeployOnlySometimes)
                 {
-                    var deployFolder = AssetBundleExporter.GetBundlesDeployFolder();
-
-
-                    string[] bundleDirectories = null;
-
-                    if (Directory.Exists(deployFolder))
+                    var previousAutoDeployStr = EditorPrefs.GetString("AssetBundlesAutoDeployedAtUTC");
+                    if (!string.IsNullOrEmpty(previousAutoDeployStr))
                     {
-                        bundleDirectories = Directory.GetDirectories(deployFolder);
-                    }
-
-                    if (bundleDirectories == null || bundleDirectories.Length == 0)
-                    {
-                        EditorUtility.DisplayDialog("AssetBundles Missing!",
-                            "AssetBundleService.USE_ASSETDATABASE == false, so AssetBundles are required to play. There are no bundles in your StreamingAssets/bundles folder. " +
-                            "You need to build them before playing.\ntoolbar->AssetBundles/Build/Export (Editor)",
-                            "ok daddy");
-                        EditorApplication.ExitPlaymode();
+                        if (long.TryParse(previousAutoDeployStr, out var previousAutoDeployUTC))
+                        {
+                            var previousAutoDeployDateTime = new DateTime(previousAutoDeployUTC, DateTimeKind.Utc);
+                            if (previousAutoDeployDateTime < System.DateTime.UtcNow + new TimeSpan(0, 2, 0, 0, 0))
+                            {
+                                return;
+                            }
+                        }
                     }
                 }
-                catch (System.Exception e)
+
+                AssetBundleExporter.DeployBundles();
+
+                var currentDatetimeUtcStr = System.DateTime.UtcNow.Ticks.ToString();
+                EditorPrefs.SetString("AssetBundlesAutoDeployedAtUTC", currentDatetimeUtcStr);
+
+                return;
+            }
+
+            try
+            {
+
+
+                var deployFolder = AssetBundleExporter.GetBundlesDeployFolder();
+
+                string[] bundleDirectories = null;
+
+                if (Directory.Exists(deployFolder))
                 {
-                    Debug.LogException(e);
+                    bundleDirectories = Directory.GetDirectories(deployFolder);
                 }
+
+                if (bundleDirectories == null || bundleDirectories.Length == 0)
+                {
+                    EditorUtility.DisplayDialog("AssetBundles Missing!",
+                        "AssetBundleService.USE_ASSETDATABASE == false, so AssetBundles are required to play. There are no bundles in your StreamingAssets/bundles folder. " +
+                        "You need to build them before playing.\ntoolbar->AssetBundles/Build/Export (Editor)",
+                        "DO IT 🔥");
+                    EditorApplication.ExitPlaymode();
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogException(e);
             }
         }
 
@@ -122,9 +174,11 @@ namespace FunkAssetBundles
             return;
             _movedFolders.Clear();
 
+
             var buildTarget = EditorUserBuildSettings.activeBuildTarget;
             var runtimeTarget = AssetBundleExporter.ConvertBuildTargetToRuntime(buildTarget);
-            var runtimeTargetName = AssetBundleService.GetRuntimePlatformName(runtimeTarget);
+            var isServer = AssetBundleExporter.GetIsPlayerServer();
+            var runtimeTargetName = AssetBundleService.GetRuntimePlatformName(runtimeTarget, isServer);
 
             var streamingAssets = Application.streamingAssetsPath;
 
@@ -155,5 +209,5 @@ namespace FunkAssetBundles
             }
         }
     }
-}
 #endif
+}

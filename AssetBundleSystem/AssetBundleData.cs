@@ -8,6 +8,7 @@ namespace FunkAssetBundles
 #if UNITY_EDITOR
     using UnityEditor;
 
+    [CanEditMultipleObjects]
     [CustomEditor(typeof(AssetBundleData))]
     public class AssetBundleDataEditor : Editor
     {
@@ -24,6 +25,27 @@ namespace FunkAssetBundles
         private string[] _assetBundlesList = null;
         private int _thisAssetBundleIndex = -1;
         private int _dependencySetBundleIndex = 0;
+
+        private SerializedProperty EnabledInBuild;
+        private SerializedProperty NoDependencies;
+        private SerializedProperty LoadBundleOnInitialize;
+        private SerializedProperty PackSeparately;
+        private SerializedProperty SceneBundle;
+        private SerializedProperty HideInLists;
+        private SerializedProperty ForceLoadInEditor;
+        private SerializedProperty DoNotBuildForDedicatedServer;
+
+        private void OnEnable()
+        {
+            EnabledInBuild = serializedObject.FindProperty("EnabledInBuild");
+            NoDependencies = serializedObject.FindProperty("NoDependencies");
+            LoadBundleOnInitialize = serializedObject.FindProperty("LoadBundleOnInitialize");
+            PackSeparately = serializedObject.FindProperty("PackSeparately");
+            SceneBundle = serializedObject.FindProperty("SceneBundle");
+            HideInLists = serializedObject.FindProperty("HideInLists");
+            ForceLoadInEditor = serializedObject.FindProperty("ForceLoadInEditor");
+            DoNotBuildForDedicatedServer = serializedObject.FindProperty("DoNotBuildForDedicatedServer");
+        }
 
         // dependency stuff 
         private List<AssetDependency> _implicitDependencyCache = new List<AssetDependency>();
@@ -283,8 +305,7 @@ namespace FunkAssetBundles
 
                                 if (unityObject != null)
                                 {
-
-                                    // Debug.Log(unityObject.GetType());
+                                    // LogService.Log(unityObject.GetType());
 
                                     var index = list.FindIndex(other =>
                                     {
@@ -349,6 +370,8 @@ namespace FunkAssetBundles
 
                     var index = _implicitDependencyCache.FindIndex(other =>
                     {
+                        if (other == null || other.dependency == null) return false;
+
                         if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(other.dependency, out string otherGuid, out long otherLocalFileId))
                         {
                             return dependencyGuid.Equals(otherGuid, System.StringComparison.Ordinal);
@@ -394,7 +417,7 @@ namespace FunkAssetBundles
                 var dependencyData = _implicitDependencyCache[i];
                 var dependencyAsset = dependencyData.dependency;
 
-                if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(dependencyAsset, out string guid, out long localId))
+                if (dependencyAsset != null && AssetDatabase.TryGetGUIDAndLocalFileIdentifier(dependencyAsset, out string guid, out long localId))
                 {
                     foreach (var bundleData in _assetBundleListCache)
                     {
@@ -422,6 +445,9 @@ namespace FunkAssetBundles
         "Ghost Data",
         };
 
+
+        private string _dependencyQuery;
+
         private void DrawTabView()
         {
             EditorGUILayout.BeginHorizontal("GroupBox");
@@ -442,20 +468,37 @@ namespace FunkAssetBundles
 
         public override void OnInspectorGUI()
         {
+            serializedObject.UpdateIfRequiredOrScript();
+
             var instance = (AssetBundleData)target;
+            var hasMultipleSelected = targets.Length > 1;
 
             UpdateAssetBundleList(instance);
 
             // draw header group 
             EditorGUILayout.BeginVertical("GroupBox");
             {
-                EditorGUILayout.LabelField($"{instance.name}.bundle", EditorStyles.boldLabel);
-                EditorGUILayout.LabelField($"{instance.Assets.Count} assets in bundle.");
+                if(hasMultipleSelected)
+                {
+                    EditorGUILayout.LabelField($"{targets.Length} AssetBundleDatas selected.");
+                }
+                else
+                {
+                    EditorGUILayout.LabelField($"{instance.name}.bundle", EditorStyles.boldLabel);
+                    EditorGUILayout.LabelField($"{instance.Assets.Count} assets in bundle.");
+                }
             }
             EditorGUILayout.EndVertical();
 
             // draw tabs 
-            DrawTabView();
+            if(hasMultipleSelected)
+            {
+                _tabIndex = 0;
+            }
+            else
+            {
+                DrawTabView();
+            }
 
             // draw paginated asset list group 
             if (_tabIndex == 0)
@@ -463,210 +506,235 @@ namespace FunkAssetBundles
                 // browser 
                 EditorGUILayout.BeginVertical("GroupBox");
                 {
-                    var assetsProperty = serializedObject.FindProperty("Assets");
+                    EditorGUILayout.PropertyField(EnabledInBuild);
+                    EditorGUILayout.PropertyField(NoDependencies);
+                    EditorGUILayout.PropertyField(LoadBundleOnInitialize);
+                    EditorGUILayout.PropertyField(PackSeparately);
+                    EditorGUILayout.PropertyField(SceneBundle);
+                    EditorGUILayout.PropertyField(HideInLists);
+                    EditorGUILayout.PropertyField(ForceLoadInEditor);
+                    EditorGUILayout.PropertyField(DoNotBuildForDedicatedServer);
 
-                    // page controls 
-                    EditorGUILayout.BeginVertical("GroupBox");
+                    if (hasMultipleSelected)
                     {
-                        // draw search query 
-                        EditorGUILayout.BeginHorizontal();
+                        // EditorGUILayout.HelpBox("[multiple selected]", MessageType.Info);
+                    }
+                    else
+                    {
+                        var assetsProperty = serializedObject.FindProperty("Assets");
+
+                        // page controls 
+                        EditorGUILayout.BeginVertical("GroupBox");
                         {
-                            var newSearchQuery = EditorGUILayout.TextField("query", _searchQuery);
-                            if (newSearchQuery != _searchQuery)
+                            // draw search query 
+                            EditorGUILayout.BeginHorizontal();
                             {
-                                _searchQuery = newSearchQuery;
-                                _searchResults.Clear();
-
-                                var searchInvariant = _searchQuery.ToLowerInvariant();
-
-                                if (!string.IsNullOrEmpty(_searchQuery))
+                                var newSearchQuery = EditorGUILayout.TextField("query", _searchQuery);
+                                if (newSearchQuery != _searchQuery)
                                 {
-                                    var count = assetsProperty.arraySize;
-                                    for (var i = 0; i < count; ++i)
+                                    _searchQuery = newSearchQuery;
+                                    _searchResults.Clear();
+
+                                    var searchInvariant = _searchQuery.ToLowerInvariant();
+
+                                    if (!string.IsNullOrEmpty(_searchQuery))
                                     {
-                                        var assetData = instance.Assets[i];
-
-                                        if (!assetData.AssetBundleReference.ToLowerInvariant().Contains(searchInvariant))
+                                        var count = assetsProperty.arraySize;
+                                        for (var i = 0; i < count; ++i)
                                         {
-                                            continue;
-                                        }
+                                            var assetData = instance.Assets[i];
 
-                                        _searchResults.Add(i);
+                                            if (!assetData.AssetBundleReference.ToLowerInvariant().Contains(searchInvariant))
+                                            {
+                                                continue;
+                                            }
+
+                                            _searchResults.Add(i);
+                                        }
                                     }
+                                }
+
+                                if (GUILayout.Button("x"))
+                                {
+                                    _searchQuery = string.Empty;
+                                    _searchResults.Clear();
+
+                                    // force clear that text box 
+                                    Repaint();
+                                }
+                            }
+                            EditorGUILayout.EndHorizontal();
+
+                            // draw page controls 
+                            EditorGUILayout.BeginHorizontal();
+                            {
+                                var pageCount = assetsProperty.arraySize / _assetsPerPage;
+                                var queryPagecount = _searchResults.Count / _assetsPerPage;
+
+                                if (GUILayout.Button("<<"))
+                                {
+                                    _assetPageIndex = 0;
+                                    _queryPageIndex = 0;
+                                }
+
+                                if (GUILayout.Button("<"))
+                                {
+                                    if (_assetPageIndex > 0)
+                                    {
+                                        _assetPageIndex--;
+                                    }
+
+                                    if (_queryPageIndex > 0)
+                                    {
+                                        _queryPageIndex--;
+                                    }
+                                }
+
+                                GUILayout.FlexibleSpace();
+
+                                if (string.IsNullOrEmpty(_searchQuery))
+                                {
+                                    EditorGUILayout.LabelField($"{_assetPageIndex + 1} / {pageCount + 1}");
+                                }
+                                else
+                                {
+                                    EditorGUILayout.LabelField($"{_queryPageIndex + 1} / {queryPagecount + 1}");
+                                }
+
+                                if (GUILayout.Button(">"))
+                                {
+                                    if (_assetPageIndex < pageCount)
+                                    {
+                                        _assetPageIndex++;
+                                    }
+
+                                    if (_queryPageIndex < queryPagecount)
+                                    {
+                                        _queryPageIndex++;
+                                    }
+                                }
+
+                                if (GUILayout.Button(">>"))
+                                {
+                                    _assetPageIndex = Mathf.Max(0, pageCount);
+                                    _queryPageIndex = Mathf.Max(0, queryPagecount);
+                                }
+                            }
+                            EditorGUILayout.EndHorizontal();
+                        }
+                        EditorGUILayout.EndVertical();
+
+                        // no search = paginated list of all assets in bundle 
+                        if (string.IsNullOrEmpty(_searchQuery))
+                        {
+                            var startAtIndex = _assetPageIndex * _assetsPerPage;
+                            for (var i = startAtIndex; i < startAtIndex + _assetsPerPage && i < assetsProperty.arraySize; ++i)
+                            {
+                                if (DrawAsset(instance, assetsProperty, i))
+                                {
+                                    break;
                                 }
                             }
 
-                            if (GUILayout.Button("x"))
+                            if (assetsProperty.arraySize == 0)
                             {
-                                _searchQuery = string.Empty;
-                                _searchResults.Clear();
+                                EditorGUILayout.HelpBox("There are no assets in this bundle", MessageType.Info);
+                            }
+                        }
 
-                                // force clear that text box 
-                                Repaint();
+                        // search results 
+                        else
+                        {
+                            var startAtIndex = _queryPageIndex * _assetsPerPage;
+                            for (var i = startAtIndex; i < startAtIndex + _assetsPerPage && i < _searchResults.Count; ++i)
+                            {
+                                var assetIndex = _searchResults[i];
+                                if (DrawAsset(instance, assetsProperty, assetIndex))
+                                {
+                                    break;
+                                }
+                            }
+
+                            if (_searchResults.Count == 0)
+                            {
+                                EditorGUILayout.HelpBox("There are no results for your query.", MessageType.Info);
+                            }
+                        }
+                    }
+                }
+                EditorGUILayout.EndVertical();
+
+                if (!hasMultipleSelected)
+                {
+                    // tools 
+                    EditorGUILayout.BeginVertical("GroupBox");
+                    {
+                        // extra controls related to adding things to this bundle 
+                        EditorGUILayout.LabelField("Tools: ");
+                        EditorGUILayout.Space();
+
+                        // reference / asset fixing tools 
+                        EditorGUILayout.BeginHorizontal();
+                        {
+                            // the old mega search (fixes dangling references) 
+                            if (GUILayout.Button("add dangling references"))
+                            {
+                                AssetReferenceE.FindDanglingReferencesInsertIntoBundleData(instance);
+                            }
+
+                            // updates stuff for builds, and allows queries 
+                            if (GUILayout.Button("update internal references"))
+                            {
+                                AssetBundleService.EditorUpdateBundleReferencesForBuilds();
+                            }
+
+                            // if one asset is somehow in two bundles, remove it from the other bundles (stay in selected bundle) 
+                            if (GUILayout.Button("remove our assets from other bundles"))
+                            {
+                                instance.EditorRemoveOurAssetsFromOtherBundles();
                             }
                         }
                         EditorGUILayout.EndHorizontal();
 
-                        // draw page controls 
                         EditorGUILayout.BeginHorizontal();
                         {
-                            var pageCount = assetsProperty.arraySize / _assetsPerPage;
-                            var queryPagecount = _searchResults.Count / _assetsPerPage;
-
-                            if (GUILayout.Button("<<"))
+                            if (GUILayout.Button("Print NULL References"))
                             {
-                                _assetPageIndex = 0;
-                                _queryPageIndex = 0;
-                            }
-
-                            if (GUILayout.Button("<"))
-                            {
-                                if (_assetPageIndex > 0)
+                                foreach (var assetData in instance.Assets)
                                 {
-                                    _assetPageIndex--;
-                                }
-
-                                if (_queryPageIndex > 0)
-                                {
-                                    _queryPageIndex--;
+                                    var assetPath = AssetDatabase.GUIDToAssetPath(assetData.GUID);
+                                    if (string.IsNullOrEmpty(assetPath))
+                                    {
+                                        Debug.LogError($"Found NULL! [{assetData.GUID}] (last known reference: {assetData.AssetBundleReference})");
+                                    }
                                 }
                             }
 
-                            GUILayout.FlexibleSpace();
-
-                            if (string.IsNullOrEmpty(_searchQuery))
+                            if (GUILayout.Button("DELETE NULL References") && EditorUtility.DisplayDialog("delete nulls?", "are you sure????", "yes i am kinda sure", "no no no no no"))
                             {
-                                EditorGUILayout.LabelField($"{_assetPageIndex + 1} / {pageCount + 1}");
-                            }
-                            else
-                            {
-                                EditorGUILayout.LabelField($"{_queryPageIndex + 1} / {queryPagecount + 1}");
+                                instance.EditorRemoveNullAssetReferences();
                             }
 
-                            if (GUILayout.Button(">"))
+                            if (GUILayout.Button("Debug Build Bundle"))
                             {
-                                if (_assetPageIndex < pageCount)
-                                {
-                                    _assetPageIndex++;
-                                }
-
-                                if (_queryPageIndex < queryPagecount)
-                                {
-                                    _queryPageIndex++;
-                                }
+                                var buildTarget = EditorUserBuildSettings.activeBuildTarget;
+                                AssetBundleExporter.BuildBundlesForTarget(buildTarget, forceSingleBundleBuildDebug: instance);
                             }
+                        }
 
-                            if (GUILayout.Button(">>"))
+                        EditorGUILayout.EndHorizontal();
+
+                        EditorGUILayout.BeginHorizontal();
+                        {
+                            if (GUILayout.Button("Delete duplicate refs"))
                             {
-                                _assetPageIndex = Mathf.Max(0, pageCount);
-                                _queryPageIndex = Mathf.Max(0, queryPagecount);
+                                instance.EditorRemoveDuplicateReferences();
                             }
                         }
                         EditorGUILayout.EndHorizontal();
                     }
                     EditorGUILayout.EndVertical();
-
-                    // no search = paginated list of all assets in bundle 
-                    if (string.IsNullOrEmpty(_searchQuery))
-                    {
-                        var startAtIndex = _assetPageIndex * _assetsPerPage;
-                        for (var i = startAtIndex; i < startAtIndex + _assetsPerPage && i < assetsProperty.arraySize; ++i)
-                        {
-                            if (DrawAsset(instance, assetsProperty, i))
-                            {
-                                break;
-                            }
-                        }
-
-                        if (assetsProperty.arraySize == 0)
-                        {
-                            EditorGUILayout.HelpBox("There are no assets in this bundle", MessageType.Info);
-                        }
-                    }
-
-                    // search results 
-                    else
-                    {
-                        var startAtIndex = _queryPageIndex * _assetsPerPage;
-                        for (var i = startAtIndex; i < startAtIndex + _assetsPerPage && i < _searchResults.Count; ++i)
-                        {
-                            var assetIndex = _searchResults[i];
-                            if (DrawAsset(instance, assetsProperty, assetIndex))
-                            {
-                                break;
-                            }
-                        }
-
-                        if (_searchResults.Count == 0)
-                        {
-                            EditorGUILayout.HelpBox("There are no results for your query.", MessageType.Info);
-                        }
-                    }
-
                 }
-                EditorGUILayout.EndVertical();
-
-                // tools 
-                EditorGUILayout.BeginVertical("GroupBox");
-                {
-                    // extra controls related to adding things to this bundle 
-                    EditorGUILayout.LabelField("Tools: ");
-                    EditorGUILayout.Space();
-
-                    // reference / asset fixing tools 
-                    EditorGUILayout.BeginHorizontal();
-                    {
-                        // the old mega search (fixes dangling references) 
-                        if (GUILayout.Button("add dangling references"))
-                        {
-                            AssetReferenceE.FindDanglingReferencesInsertIntoBundleData(instance);
-                        }
-
-                        // updates stuff for builds, and allows queries 
-                        if (GUILayout.Button("update internal references"))
-                        {
-                            AssetBundleService.EditorUpdateBundleReferencesForBuilds();
-                        }
-
-                        // if one asset is somehow in two bundles, remove it from the other bundles (stay in selected bundle) 
-                        if (GUILayout.Button("remove our assets from other bundles"))
-                        {
-                            instance.EditorRemoveOurAssetsFromOtherBundles(); 
-                        }
-
-                        if (GUILayout.Button("Print NULL References"))
-                        {
-                            foreach (var assetData in instance.Assets)
-                            {
-                                var assetPath = AssetDatabase.GUIDToAssetPath(assetData.GUID);
-                                if (string.IsNullOrEmpty(assetPath))
-                                {
-                                    Debug.LogError($"Found NULL! [{assetData.GUID}] (last known reference: {assetData.AssetBundleReference})");
-                                }
-                            }
-                        }
-
-                        if (GUILayout.Button("DELETE NULL References") && EditorUtility.DisplayDialog("delete nulls?", "are you sure????", "yes i am kinda sure", "no no no no no"))
-                        {
-                            Undo.RecordObject(instance, "removed null references");
-
-                            for (var i = instance.Assets.Count - 1; i >= 0; --i)
-                            {
-                                var assetData = instance.Assets[i];
-
-                                var assetPath = AssetDatabase.GUIDToAssetPath(assetData.GUID);
-                                if (string.IsNullOrEmpty(assetPath))
-                                {
-                                    instance.Assets.RemoveAt(i);
-                                }
-                            }
-
-                            EditorUtility.SetDirty(instance);
-                        }
-                    }
-                    EditorGUILayout.EndHorizontal();
-                }
-                EditorGUILayout.EndVertical();
             }
 
             // dependency 
@@ -711,7 +779,10 @@ namespace FunkAssetBundles
                     EditorGUILayout.BeginVertical();
                     _showDependencyOwners = EditorGUILayout.Toggle("Show Sources", _showDependencyOwners, GUILayout.Width(128f));
                     _onlyShowPrefabs = EditorGUILayout.Toggle("Only Show Prefabs", _onlyShowPrefabs, GUILayout.Width(128f));
+                    _dependencyQuery = EditorGUILayout.TextField("Search: ", _dependencyQuery);
                     EditorGUILayout.EndVertical();
+
+                    var dependencyQuery = _dependencyQuery != null ? _dependencyQuery.ToLowerInvariant() : string.Empty;
 
                     // foreach (var dependency in _implicitDependencyCache)
                     for (var d = 0; d < _implicitDependencyCache.Count; ++d)
@@ -719,6 +790,16 @@ namespace FunkAssetBundles
                         var dependency = _implicitDependencyCache[d];
 
                         if (_onlyShowPrefabs && dependency.dependency as GameObject == null)
+                        {
+                            continue;
+                        }
+
+                        if (dependency == null || dependency.dependency == null)
+                        {
+                            continue;
+                        }
+
+                        if (!string.IsNullOrEmpty(_dependencyQuery) && !dependency.dependency.name.ToLowerInvariant().Contains(dependencyQuery))
                         {
                             continue;
                         }
@@ -1016,10 +1097,7 @@ namespace FunkAssetBundles
                 EditorGUILayout.EndVertical();
             }
 
-            if (GUI.changed)
-            {
-                serializedObject.ApplyModifiedProperties();
-            }
+            var changed = serializedObject.ApplyModifiedProperties();
 
             // draw default inspector 
             // base.OnInspectorGUI();
@@ -1102,7 +1180,6 @@ namespace FunkAssetBundles
             public string propertyPath;
         }
 
-
         private bool DrawAsset(AssetBundleData instance, SerializedProperty assetsProperty, int i)
         {
             var assetProperty = assetsProperty.GetArrayElementAtIndex(i);
@@ -1149,35 +1226,21 @@ namespace FunkAssetBundles
     public class AssetBundleData : ScriptableObject
     {
         public List<AssetBundleReferenceData> Assets = new List<AssetBundleReferenceData>();
+        [Tooltip("Disable to NOT include this bundle in builds. Only do this for editor-specific bundles (advanced usage).")] public bool EnabledInBuild = true;
+        [Tooltip("When enabled, all necessary dependencies for every asset in this bundle will be included in this bundle, rather than being dependant on another bundle.")] public bool NoDependencies;
+        [Tooltip("When enabled, this bundle will immediately be initialized on startup.")] public bool LoadBundleOnInitialize;
+        [Tooltip("When enabled, assets in this bundle will be built as individual bundles.")] public bool PackSeparately;
+        [Tooltip("When enabled, only scenes can be placed in this bundle. When disabled, you cannot place scenes in this bundle. This is a Unity limitation.")] public bool SceneBundle;
+        [Tooltip("Hide this bundle from the FunkyBundle dropdown list.")] public bool HideInLists;
+        [Tooltip("In Editor, loads from this bundle will NOT use AssetDatabase, and instead will only use real asset bundles. Only enable this if you understand the implications.")] public bool ForceLoadInEditor;
+        [Tooltip("When the 'isDedicatedServer' is set in the AssetBundleExporter API, this bundle will be skipped. Only enable this if you understand the implications.")] public bool DoNotBuildForDedicatedServer;
 
-        [System.NonSerialized] private Dictionary<string, int> _lookupTable = new Dictionary<string, int>();
-
-        private unsafe string StupidAsciiToLower(string s)
-        {
-            var buffer = stackalloc char[s.Length + 1];
-
-            for (int i = 0; i < s.Length; ++i)
-            {
-                var c = s[i];
-                if (c >= 'A' && c <= 'Z')
-                    c = (char)((c - (int)'A') + (int)'a');
-                buffer[i] = c;
-            }
-            buffer[s.Length + 1] = '\0';
-
-            var result = new string(buffer);
-
-            return result;
-        }
+        [System.NonSerialized] private Dictionary<string, int> _lookupTable = new Dictionary<string, int>(System.StringComparer.Ordinal);
 
         public void RefreshLookupTable()
         {
 #if UNITY_EDITOR
-            foreach (var asset in Assets)
-            {
-                //asset.AssetBundleReference = AssetDatabase.GUIDToAssetPath(asset.GUID).ToLowerInvariant();
-                asset.AssetBundleReference = StupidAsciiToLower(AssetDatabase.GUIDToAssetPath(asset.GUID));
-            }
+            EditorRefreshAssetDatabasePaths();
 #endif
 
             _lookupTable.Clear();
@@ -1185,6 +1248,12 @@ namespace FunkAssetBundles
             for (var i = 0; i < Assets.Count; ++i)
             {
                 var asset = Assets[i];
+                if(_lookupTable.ContainsKey(asset.GUID))
+                {
+                    Debug.LogError($"Duplicate asset detected in bundle {name}: {asset.AssetBundleReference} {asset.GUID}", this);
+                    continue;
+                }
+
                 _lookupTable.Add(asset.GUID, i);
             }
         }
@@ -1201,29 +1270,77 @@ namespace FunkAssetBundles
 
         public bool ContainsAssetRef(string guid)
         {
+            if(_lookupTable == null)
+            {
+                RefreshLookupTable();
+            }
+
             return _lookupTable.ContainsKey(guid);
         }
 
 #if UNITY_EDITOR
+        public void EditorRemoveDuplicateReferences()
+        {
+            Undo.RecordObject(this, "removed duplicate references");
+
+            for (var i = 0; i < Assets.Count; ++i)
+            {
+                var assetData = Assets[i];
+
+                for (var j = i + 1; j < Assets.Count; ++j)
+                {
+                    var otherAssetData = Assets[j];
+
+                    if(assetData.GUID == otherAssetData.GUID)
+                    {
+                        Assets.RemoveAt(j);
+                        --j;
+
+                        continue;
+                    }
+                }
+            }
+
+            EditorUtility.SetDirty(this);
+        }
+
+        public void EditorRemoveNullAssetReferences()
+        {
+            Undo.RecordObject(this, "removed null references");
+
+            for (var i = Assets.Count - 1; i >= 0; --i)
+            {
+                var assetData = Assets[i];
+
+                var assetPath = AssetDatabase.GUIDToAssetPath(assetData.GUID);
+                if (string.IsNullOrEmpty(assetPath))
+                {
+                    Assets.RemoveAt(i);
+                }
+            }
+
+            EditorUtility.SetDirty(this);
+        }
 
         public void EditorAddAssetReference(string guid)
         {
+            var bundleReference = AssetBundleService.AssetPathLowerCase(AssetDatabase.GUIDToAssetPath(guid));
             var data = new AssetBundleReferenceData()
             {
                 GUID = guid,
-                AssetBundleReference = AssetDatabase.GUIDToAssetPath(guid).ToLowerInvariant(),
+                AssetBundleReference = bundleReference,
             };
 
             var exists = Assets.FindIndex(result => result.GUID.Equals(guid, System.StringComparison.Ordinal)) > -1;
             if (exists)
             {
-                Debug.LogWarning($"{guid} is already in this bundle!");
+                // Debug.LogWarning($"[SKIPPED] {bundleReference} [{guid}] is already in this bundle!");
                 return;
             }
 
             Assets.Add(data);
 
-            Debug.LogWarning($"{guid} added to bundle!");
+            Debug.Log($"[ADDED] {bundleReference} [{guid}]");
 
             EditorUtility.SetDirty(this);
         }
@@ -1234,49 +1351,95 @@ namespace FunkAssetBundles
             EditorUtility.SetDirty(this);
         }
 
-
-    public void EditorRemoveOurAssetsFromOtherBundles()
-    {
-        var assetList = new List<AssetBundleData>();
-        AssetDatabaseE.LoadAssetsOfType(assetList);
-
-        var any_duplicates = false;
-
-        foreach (var otherBundle in assetList)
+        public void EditorRemoveOurAssetsFromOtherBundles()
         {
-            if (otherBundle == this)
+            if (this.NoDependencies)
             {
-                continue;
+                Debug.LogWarning($"Because this bundle has 'NoDependencies' enabled, this action was skipped. It's not necessary.");
+                return;
             }
 
-            var toRemove = new List<AssetBundleReferenceData>();
+            var assetList = new List<AssetBundleData>();
+            AssetDatabaseE.LoadAssetsOfType(assetList);
 
-            foreach (var ourAsset in this.Assets)
+            var any_duplicates = false;
+
+            foreach (var otherBundle in assetList)
             {
-                foreach (var theirAsset in otherBundle.Assets)
+                if (otherBundle == this)
                 {
-                    if (ourAsset.GUID.Equals(theirAsset.GUID, System.StringComparison.Ordinal))
+                    continue;
+                }
+
+                if (otherBundle.NoDependencies)
+                {
+                    continue;
+                }
+
+                var toRemove = new List<AssetBundleReferenceData>();
+
+                foreach (var ourAsset in this.Assets)
+                {
+                    foreach (var theirAsset in otherBundle.Assets)
                     {
-                        toRemove.Add(theirAsset);
+                        if (ourAsset.GUID.Equals(theirAsset.GUID, System.StringComparison.Ordinal))
+                        {
+                            toRemove.Add(theirAsset);
+                        }
                     }
                 }
+
+                foreach (var remove in toRemove)
+                {
+                    otherBundle.Assets.Remove(remove);
+                    any_duplicates = true;
+                    Debug.Log($"removed {remove.GUID} ({remove.AssetBundleReference}) from {otherBundle.name}", otherBundle);
+                }
+
+                EditorUtility.SetDirty(otherBundle);
             }
 
-            foreach (var remove in toRemove)
+            if (!any_duplicates)
             {
-                otherBundle.Assets.Remove(remove);
-                any_duplicates = true; 
-                Debug.Log($"removed {remove.GUID} ({remove.AssetBundleReference}) from {otherBundle.name}", otherBundle);
+                Debug.Log($"No duplicates found for {this.name}'s assets.");
+            }
+        }
+
+        public void EditorRefreshAssetDatabasePaths()
+        {
+            if (Assets == null)
+            {
+                Debug.LogError($"null assets?", this);
+                return;
             }
 
-            EditorUtility.SetDirty(otherBundle);
-        }
+            foreach (var asset in Assets)
+            {
+                if (asset == null)
+                {
+                    continue;
+                }
 
-        if(!any_duplicates)
-        {
-            Debug.Log($"No duplicates found for {this.name}'s assets.");
+                if(string.IsNullOrEmpty(asset.GUID))
+                {
+                    continue;
+                }
+
+                var assetPathRaw = AssetDatabase.GUIDToAssetPath(asset.GUID);
+                if(string.IsNullOrEmpty(assetPathRaw))
+                {
+                    continue;
+                }
+
+                var assetPath = AssetBundleService.AssetPathLowerCase(assetPathRaw);
+                if(string.IsNullOrEmpty(assetPath))
+                {
+                    continue;
+                }
+
+                asset.AssetBundleReference = assetPath;
+            }
         }
-    }
 #endif
 
     }
