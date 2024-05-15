@@ -2,33 +2,12 @@
 
 namespace FunkAssetBundles
 {
+#if UNITY_EDITOR
+    using UnityEditor;
+#endif
     using System.Collections;
     using System.Collections.Generic;
     using UnityEngine;
-
-#if UNITY_EDITOR
-    using UnityEditor;
-
-    [CustomEditor(typeof(AssetBundleService))]
-    public class AssetBundleServiceEditor : Editor
-    {
-        public override void OnInspectorGUI()
-        {
-            base.OnInspectorGUI();
-
-            // note: can we update this as build time? pre process build step 
-            if (GUILayout.Button("Refresh bundle list"))
-            {
-                AssetBundleService.EditorRefreshAssetBundleListOnPrefab();
-            }
-
-            if (GUILayout.Button("Refresh references"))
-            {
-                AssetBundleService.EditorUpdateBundleReferencesForBuilds();
-            }
-        }
-    }
-#endif
 
     [DefaultExecutionOrder(-10000)]
     public class AssetBundleService : MonoBehaviour
