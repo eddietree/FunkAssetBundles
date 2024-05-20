@@ -395,6 +395,12 @@ namespace FunkAssetBundles
 
             Debug.LogFormat("AssetBundleExporter.DeployBundlesForTarget: copying {0} to {1}...", copySrc.Replace(root, ""), copyDst.Replace(root, ""));
 
+            // ensure exists 
+            if(!Directory.Exists(copySrc))
+            {
+                Directory.CreateDirectory(copySrc); 
+            }
+
             RecursiveFolderCopy(copySrc, copyDst);
         }
 
