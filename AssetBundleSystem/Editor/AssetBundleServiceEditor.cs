@@ -9,6 +9,10 @@ namespace FunkAssetBundles
     [CustomEditor(typeof(AssetBundleService))]
     public class AssetBundleServiceEditor : Editor
     {
+
+        private string _previousDebugData;
+        private float _previousDebugQueryAt;
+
         public override void OnInspectorGUI()
         {
             base.OnInspectorGUI();
@@ -22,6 +26,19 @@ namespace FunkAssetBundles
             if (GUILayout.Button("Refresh references"))
             {
                 AssetBundleService.EditorUpdateBundleReferencesForBuilds();
+            }
+
+            if(Application.isPlaying)
+            {
+                var instance = (AssetBundleService) target;
+
+                if(Time.time > _previousDebugQueryAt + 1f)
+                {
+                    _previousDebugData = instance.BuildDebugStats();
+                    _previousDebugQueryAt = Time.time;
+                }
+
+                EditorGUILayout.HelpBox(_previousDebugData, MessageType.Info, true); 
             }
         }
     }

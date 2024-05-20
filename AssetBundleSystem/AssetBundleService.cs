@@ -8,6 +8,7 @@ namespace FunkAssetBundles
     using System.Collections;
     using System.Collections.Generic;
     using UnityEngine;
+    using UnityEngine.Profiling;
 
     [DefaultExecutionOrder(-10000)]
     public class AssetBundleService : MonoBehaviour
@@ -31,10 +32,35 @@ namespace FunkAssetBundles
             // Instance.Initialize(); 
         }
 
+        public string BuildDebugStats()
+        {
+            var sb = new System.Text.StringBuilder();
+
+            sb.AppendLine($"{_bundleCache.Count:N0} bundles currently initialized.");
+            sb.AppendLine($"{_assetCache.Count:N0} assets currently cached.");
+
+            long memoryFromAssets = 0;
+
+            foreach(var assetCache in _assetCache)
+            {
+                var data = assetCache.Value;
+                if(data.Asset != null)
+                {
+                    memoryFromAssets += Profiler.GetRuntimeMemorySizeLong(data.Asset);
+                }
+            }
+
+            sb.AppendLine($"{memoryFromAssets / 1000:N0} KB of runtime memory used by cached assets.");
+
+            return sb.ToString();
+        }
+
         public static string GetBundlesDeployFolder()
         {
             return System.IO.Path.Combine(Application.streamingAssetsPath, "bundles");
         }
+
+        public const bool PRELOAD_BUNDLES_IN_MEMORY = false;
 
 #if UNITY_EDITOR
         // when true, the editor will load things from AssetDatabase instead of from asset bundles. 
@@ -44,7 +70,7 @@ namespace FunkAssetBundles
         public const bool DEBUG_DELAY_RANDOMIZE = false;
         public const float DEBUG_DELAY_CONSTANT = 0.00f;
 
-        public T LoadFromAssetBundle<T>(AssetReference<T> reference, bool logErrors = true) where T : Object
+        public T EditorLoadFromAssetDatabase<T>(AssetReference<T> reference, bool logErrors = true) where T : Object
         {
             var bundle = EditorFindContainerBundle(reference.Guid);
             if (bundle == null)
@@ -405,18 +431,30 @@ namespace FunkAssetBundles
             foreach (var entry in _bundleCache)
             {
                 var bundle = entry.Value;
-                bundle.Unload(destroyInstancesToo);
+                if(bundle != null)
+                {
+                    bundle.Unload(destroyInstancesToo);
+                    AssetBundle.Destroy(bundle);
+                }
             }
 
             foreach (var entry in _assetCache)
             {
                 var cache = entry.Value;
-                cache.Request = null;
+                    cache.Request = null;
+
+                if(cache.Asset != null)
+                {
+                    cache.Asset = null; 
+                }
             }
 
             _bundleCache.Clear();
             _assetCache.Clear();
             _prewarmAssetRequests.Clear();
+
+            // unload anything left over 
+            AssetBundle.UnloadAllAssetBundles(true); 
 
             // crashes in il2cpp sometimes (?) 
             Caching.ClearCache();
@@ -457,9 +495,6 @@ namespace FunkAssetBundles
             {
                 _assetCache.Remove(key); 
             }
-
-            // unset initialized stuff 
-            _initializedBundles.Remove(bundleName); 
         }
 
         [System.NonSerialized] private Coroutine _initializeAsyncRoutine;
@@ -553,21 +588,9 @@ namespace FunkAssetBundles
             return StartCoroutine(DoAsyncInitializeBundle(assetBundleData));
         }
 
-        [System.NonSerialized] private List<string> _initializedBundles = new List<string>();
-
-        private void RegisterBundleInitialized(AssetBundleData assetBundleData)
-        {
-            Debug.Log($"[AssetBundleService] RegisterBundleInitialized() {assetBundleData.name}");
-
-            if(!_initializedBundles.Contains(assetBundleData.name))
-            {
-                _initializedBundles.Add(assetBundleData.name);
-            }
-        }
-
         public bool GetBundleInitialized(AssetBundleData assetBundleData)
         {
-            return _initializedBundles.Contains(assetBundleData.name);
+            return _bundleCache.ContainsKey(assetBundleData.name); 
         }
 
         private IEnumerator DoAsyncInitializeBundle(AssetBundleData assetBundleData)
@@ -590,7 +613,7 @@ namespace FunkAssetBundles
                 if(!assetBundleData.ForceLoadInEditor)
                 {
                     assetBundleData.RefreshLookupTable();
-                    RegisterBundleInitialized(assetBundleData);
+                    _bundleCache.Add(assetBundleData.name, null); 
                     yield break; 
                 }
             }
@@ -623,14 +646,33 @@ namespace FunkAssetBundles
 
                     Debug.LogFormat("AssetBundleService preloading (packed separately bundle) {0}: {1}", assetBundleRef, bundleAsset.AssetBundleReference);
 
-                    var assetBundleRequest = AssetBundle.LoadFromFileAsync(assetBundleRef);
+                    AssetBundle assetBundle;
 
-                    while (!assetBundleRequest.isDone)
+                    if(PRELOAD_BUNDLES_IN_MEMORY)
                     {
-                        yield return null;
+                        var bundleBytes = System.IO.File.ReadAllBytes(assetBundleRef);
+                        var assetBundleRequest = AssetBundle.LoadFromMemoryAsync(bundleBytes);
+                        
+                        while (!assetBundleRequest.isDone)
+                        {
+                            yield return null;
+                        }
+
+                        assetBundle = assetBundleRequest.assetBundle;
+                    }
+                    else
+                    {
+
+                        var assetBundleRequest = AssetBundle.LoadFromFileAsync(assetBundleRef);
+
+                        while (!assetBundleRequest.isDone)
+                        {
+                            yield return null;
+                        }
+
+                        assetBundle = assetBundleRequest.assetBundle;
                     }
 
-                    var assetBundle = assetBundleRequest.assetBundle;
                     if (assetBundle == null)
                     {
                         Debug.LogErrorFormat("AssetBundleService: * failed to load {0}", assetBundleRef);
@@ -648,14 +690,31 @@ namespace FunkAssetBundles
             {
                 Debug.LogFormat("AssetBundleService preloading {0}", assetBundleRef);
 
-                var assetBundleRequest = AssetBundle.LoadFromFileAsync(assetBundleRef);
-
-                while (!assetBundleRequest.isDone)
+                AssetBundle assetBundle;
+                if (PRELOAD_BUNDLES_IN_MEMORY)
                 {
-                    yield return null;
+                    var assetBundleBytes = System.IO.File.ReadAllBytes(assetBundleRef);
+                    var assetBundleRequest = AssetBundle.LoadFromMemoryAsync(assetBundleBytes);
+
+                    while (!assetBundleRequest.isDone)
+                    {
+                        yield return null;
+                    }
+
+                    assetBundle = assetBundleRequest.assetBundle;
+                }
+                else
+                {
+                    var assetBundleRequest = AssetBundle.LoadFromFileAsync(assetBundleRef);
+
+                    while (!assetBundleRequest.isDone)
+                    {
+                        yield return null;
+                    }
+
+                    assetBundle = assetBundleRequest.assetBundle;
                 }
 
-                var assetBundle = assetBundleRequest.assetBundle;
                 if (assetBundle == null)
                 {
                     Debug.LogErrorFormat("AssetBundleService: * failed to load {0}", assetBundleRef);
@@ -668,8 +727,6 @@ namespace FunkAssetBundles
 
                 _bundleCache.Add(assetBundleData.name, assetBundle);
             }
-
-            RegisterBundleInitialized(assetBundleData); 
         }
 
         public void SyncInitializeBundle(AssetBundleData assetBundleData)
@@ -692,7 +749,7 @@ namespace FunkAssetBundles
                 if(!assetBundleData.ForceLoadInEditor)
                 {
                     assetBundleData.RefreshLookupTable();
-                    RegisterBundleInitialized(assetBundleData);
+                    _bundleCache.Add(assetBundleData.name, null); 
                     return; 
                 }
             }
@@ -717,19 +774,40 @@ namespace FunkAssetBundles
                 foreach (var assetData in assetBundleData.Assets)
                 {
                     assetBundleRef = $"{assetBundleRoot}/{platformName}/{assetData.GUID}.bundle";
-                    var assetBundle = AssetBundle.LoadFromFile(assetBundleRef);
+
+                    AssetBundle assetBundle;
+                    if(PRELOAD_BUNDLES_IN_MEMORY)
+                    {
+                        var assetBundleBytes = System.IO.File.ReadAllBytes(assetBundleRef);
+                        assetBundle = AssetBundle.LoadFromMemory(assetBundleBytes);
+                    }
+                    else
+                    {
+                        assetBundle = AssetBundle.LoadFromFile(assetBundleRef);
+                    }
+
                     var assetNames = assetBundle.GetAllAssetNames();
                     _bundleCache.Add(assetData.GUID, assetBundle);
                 }
             }
             else
             {
-                var assetBundle = AssetBundle.LoadFromFile(assetBundleRef);
+                AssetBundle assetBundle;
+
+                if(PRELOAD_BUNDLES_IN_MEMORY)
+                {
+                    var assetBundleBytes = System.IO.File.ReadAllBytes(assetBundleRef);
+                    assetBundle = AssetBundle.LoadFromMemory(assetBundleBytes);
+                }
+                else
+                {
+                    assetBundle = AssetBundle.LoadFromFile(assetBundleRef);
+                }
+
+
                 var assetNames = assetBundle.GetAllAssetNames();
                 _bundleCache.Add(assetBundleData.name, assetBundle);
             }
-
-            RegisterBundleInitialized(assetBundleData);
         }
 
         public void DeInitialize(bool clearBundleAssetData, bool runResourcesUnload)
@@ -743,12 +821,9 @@ namespace FunkAssetBundles
                 // todo: clear GenericDictionary<T>? 
             }
 #endif
-
-            // unregister all 
-            _initializedBundles.Clear(); 
         }
 
-        public T LoadSync<T>(AssetReference<T> reference, bool logErrors = true) where T : Object
+        public T LoadSync<T>(AssetReference<T> reference, bool logErrors = true, bool allowInitializeBundle = false) where T : Object
         {
             if (string.IsNullOrEmpty(reference.Guid))
             {
@@ -766,7 +841,7 @@ namespace FunkAssetBundles
                 var assetBundleData = GetAssetBundleContainer(reference);
                 if(assetBundleData == null || !assetBundleData.ForceLoadInEditor)
                 {
-                    return LoadFromAssetBundle(reference);
+                    return EditorLoadFromAssetDatabase(reference);
                 }
             }
 #endif
@@ -787,7 +862,7 @@ namespace FunkAssetBundles
                 }
             }
 
-            var assetBundle = TryGetAssetBundle(reference);
+            var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle);
             if (assetBundle == null)
             {
                 if(logErrors)
@@ -955,7 +1030,7 @@ namespace FunkAssetBundles
         /// <param name="bundle"></param>
         /// <param name="asset"></param>
         /// <returns></returns>
-        private T GetSubAsset<T>(AssetReference<T> reference, Object asset) where T : Object
+        private T GetSubAsset<T>(AssetReference<T> reference, Object asset, bool allowInitializeBundle = false) where T : Object
         {
             // we don't live in a world this pure.
             // every day, we stray further from God's light.
@@ -992,7 +1067,7 @@ namespace FunkAssetBundles
             // currently, only Sprites should be refereced via sub asset references 
             if (!string.IsNullOrEmpty(reference.SubAssetReference))
             {
-                var assetBundle = TryGetAssetBundle(reference);
+                var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle);
                 if (assetBundle == null)
                 {
                     Debug.LogError($"no asset bundle found for {reference}");
@@ -1348,12 +1423,12 @@ namespace FunkAssetBundles
             return null;
         }
 
-        public AssetBundle TryGetAssetBundle<T>(AssetReference<T> reference) where T : Object
+        public AssetBundle TryGetAssetBundle<T>(AssetReference<T> reference, bool allowInitializeBundle = false) where T : Object
         {
             var assetBundleData = GetAssetBundleContainer(reference);
             if (assetBundleData == null)
             {
-                Debug.LogError($"Asset bundle not found for: {reference.Name} ({reference}). loaded bundles count: {_bundleCache.Count}");
+                Debug.LogError($"AssetBundleData not found for: {reference.Name} ({reference}). loaded bundles count: {_bundleCache.Count}");
                 return null;
             }
 
@@ -1370,21 +1445,21 @@ namespace FunkAssetBundles
 
             // don't do this: if its not yet loaded, it means we're trying to load asset bundles at a bad time (loading screens?) 
             // if not found, but we know the bundle.. just load the bundle? 
-            // if(!found)
-            // {
-            //     Debug.LogError($"Loading an asset from uninitialized bundle {assetBundleData.name}, initializing it now!");
-            // 
-            //     SyncInitializeBundle(assetBundleData);
-            // 
-            //     if (assetBundleData.PackSeparately)
-            //     {
-            //         found = _bundleCache.TryGetValue(reference.Guid, out bundle);
-            //     }
-            //     else
-            //     {
-            //         found = _bundleCache.TryGetValue(assetBundleData.name, out bundle);
-            //     }
-            // }
+            if(!found && allowInitializeBundle)
+            {
+                Debug.LogWarning($"Loading an asset from uninitialized bundle {assetBundleData.name}, initializing it now!");
+            
+                SyncInitializeBundle(assetBundleData);
+            
+                if (assetBundleData.PackSeparately)
+                {
+                    found = _bundleCache.TryGetValue(reference.Guid, out bundle);
+                }
+                else
+                {
+                    found = _bundleCache.TryGetValue(assetBundleData.name, out bundle);
+                }
+            }
 
             // if still not found, something is seriously wrong 
             if (found)
@@ -1393,7 +1468,8 @@ namespace FunkAssetBundles
             }
             else
             {
-                Debug.LogError($"Asset bundle '{assetBundleData.name}' not found? for: '{reference}'. loaded bundles count: {_bundleCache.Count}");
+                Debug.LogError($"AssetBundle '{assetBundleData.name}' not found? for: '{reference}'. loaded bundles count: {_bundleCache.Count}");
+
                 foreach (var entry in _bundleCache)
                 {
                     Debug.LogError($"loaded: {entry.Key}");
@@ -1424,7 +1500,7 @@ namespace FunkAssetBundles
                 var bundleData = GetAssetBundleContainer(reference);
                 if (bundleData == null || !bundleData.ForceLoadInEditor)
                 {
-                    return LoadFromAssetBundle(reference);
+                    return EditorLoadFromAssetDatabase(reference);
                 }
             }
 #endif
@@ -1444,7 +1520,7 @@ namespace FunkAssetBundles
         /// <typeparam name="T"></typeparam>
         /// <param name="reference"></param>
         /// <returns></returns>
-        public IEnumerator LoadAsync<T>(AssetReference<T> reference, bool logErrors = true) where T : UnityEngine.Object
+        public IEnumerator LoadAsync<T>(AssetReference<T> reference, bool logErrors = true, bool allowInitializeBundle = false) where T : UnityEngine.Object
         {
             // reference.Reference = reference.Reference.ToLowerInvariant();
 
@@ -1515,7 +1591,7 @@ namespace FunkAssetBundles
                 yield break;
             }
 
-            var assetBundle = TryGetAssetBundle(reference);
+            var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle);
             if (assetBundle == null)
             {
                 if(logErrors)
@@ -1572,7 +1648,7 @@ namespace FunkAssetBundles
         /// <typeparam name="T"></typeparam>
         /// <param name="reference"></param>
         /// <returns></returns>
-        public IEnumerator LoadAsyncCancellable<T>(AssetReference<T> reference, System.Func<bool> cancelIfTrue) where T : UnityEngine.Object
+        public IEnumerator LoadAsyncCancellable<T>(AssetReference<T> reference, System.Func<bool> cancelIfTrue, bool allowInitializeBundle = false) where T : UnityEngine.Object
         {
             // reference.Reference = reference.Reference.ToLowerInvariant();
 
@@ -1660,7 +1736,7 @@ namespace FunkAssetBundles
                 yield break;
             }
 
-            var assetBundle = TryGetAssetBundle(reference);
+            var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle);
             if (assetBundle == null)
             {
                 Debug.LogError($"did not find asset bundle containing the reference {reference}");
@@ -1739,7 +1815,7 @@ namespace FunkAssetBundles
                 var bundleData = GetAssetBundleContainer(reference.Guid);
                 if(bundleData == null || !bundleData.ForceLoadInEditor)
                 {
-                    return LoadFromAssetBundle(reference, logErrors: logErrors);
+                    return EditorLoadFromAssetDatabase(reference, logErrors: logErrors);
                 }
             }
 #endif

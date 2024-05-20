@@ -64,8 +64,10 @@ namespace FunkAssetBundles
                         if (long.TryParse(previousAutoDeployStr, out var previousAutoDeployUTC))
                         {
                             var previousAutoDeployDateTime = new DateTime(previousAutoDeployUTC, DateTimeKind.Utc);
-                            if (previousAutoDeployDateTime < System.DateTime.UtcNow + new TimeSpan(0, 2, 0, 0, 0))
+                            var nextDeploy = previousAutoDeployDateTime + new TimeSpan(0, 2, 0, 0, 0);
+                            if (System.DateTime.UtcNow < nextDeploy)
                             {
+                                // Debug.Log($"next deploy: {nextDeploy}, current: {System.DateTime.UtcNow}");
                                 return;
                             }
                         }
