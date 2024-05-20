@@ -81,7 +81,7 @@ namespace FunkAssetBundles
                 }
             }
 
-            if(!bundle.EnabledInBuild)
+            if(bundle != null && !bundle.EnabledInBuild)
             {
                 if(logErrors)
                 {
@@ -471,6 +471,11 @@ namespace FunkAssetBundles
             if(!_bundleCache.TryGetValue(bundleData.name, out var assetBundle))
             {
                 return;
+            }
+
+            if(assetBundle == null)
+            {
+                return; 
             }
 
             var bundleName = assetBundle.name;
