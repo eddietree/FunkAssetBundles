@@ -81,14 +81,6 @@ namespace FunkAssetBundles
                 }
             }
 
-            if(bundle != null && !bundle.EnabledInBuild)
-            {
-                if(logErrors)
-                {
-                    Debug.LogError($"[{reference}] loaded from bundle [{bundle.name}], but this bundle is not enabled in builds. This is okay in the editor - but not in builds!");
-                }
-            }
-
             if (CACHE_IN_EDITOR && Application.isPlaying)
             {
                 var cachedResult = TryGetCachedResult(reference);
