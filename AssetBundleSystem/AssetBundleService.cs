@@ -94,18 +94,21 @@ namespace FunkAssetBundles
 
             if (CACHE_IN_EDITOR && Application.isPlaying)
             {
-                _assetCache.Add(reference.GetCacheKey(), new AssetCache()
+                if(!_assetCache.ContainsKey(reference.GetCacheKey()))
                 {
-                    Guid = reference.Guid,
-                    SubAssetReference = reference.SubAssetReference,
+                    _assetCache.Add(reference.GetCacheKey(), new AssetCache()
+                    {
+                        Guid = reference.Guid,
+                        SubAssetReference = reference.SubAssetReference,
 
-                    // setup by CacheResult()
-                    Asset = null,
+                        // setup by CacheResult()
+                        Asset = null,
 
-                    // not used in editor 
-                    // Bundle = null,
-                    Request = null,
-                });
+                        // not used in editor 
+                        // Bundle = null,
+                        Request = null,
+                    });
+                }
 
                 CacheResult(reference, asset);
             }
