@@ -68,6 +68,9 @@ public class AssetBundleReferenceData
     // editor slots this in at asset bundle build time 
     public string AssetBundleReference = string.Empty;
 
+    // when PackMode is cateogory based, this will be used 
+    public string PackCategory = string.Empty;
+
     public override bool Equals(object obj)
     {
         var otherData = obj as AssetBundleReferenceData;

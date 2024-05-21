@@ -642,7 +642,7 @@ namespace FunkAssetBundles
                         continue;
                     }
 
-                    assetBundleRef = $"{assetBundleRoot}/{platformName}/{bundleAsset.GUID}.bundle";
+                    assetBundleRef = assetBundleData.GetPackedBundleDataName(bundleAsset, platformName, assetBundleRoot, assetBundleRef);
 
                     Debug.LogFormat("AssetBundleService preloading (packed separately bundle) {0}: {1}", assetBundleRef, bundleAsset.AssetBundleReference);
 
@@ -773,7 +773,7 @@ namespace FunkAssetBundles
             {
                 foreach (var assetData in assetBundleData.Assets)
                 {
-                    assetBundleRef = $"{assetBundleRoot}/{platformName}/{assetData.GUID}.bundle";
+                    assetBundleRef = assetBundleData.GetPackedBundleDataName(assetData, platformName, assetBundleRoot, assetBundleRef);
 
                     AssetBundle assetBundle;
                     if(PRELOAD_BUNDLES_IN_MEMORY)

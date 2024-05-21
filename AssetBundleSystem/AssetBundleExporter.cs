@@ -396,9 +396,9 @@ namespace FunkAssetBundles
             Debug.LogFormat("AssetBundleExporter.DeployBundlesForTarget: copying {0} to {1}...", copySrc.Replace(root, ""), copyDst.Replace(root, ""));
 
             // ensure exists 
-            if(!Directory.Exists(copySrc))
+            if (!Directory.Exists(copySrc))
             {
-                Directory.CreateDirectory(copySrc); 
+                Directory.CreateDirectory(copySrc);
             }
 
             RecursiveFolderCopy(copySrc, copyDst);
@@ -609,6 +609,18 @@ namespace FunkAssetBundles
                     if (assetBundleData.PackSeparately)
                     {
                         assetBundleSetName = $"{assetData.GUID}.bundle";
+                        
+                        switch (assetBundleData.PackMode)
+                        {
+                            case AssetBundleData.PackSeparatelyMode.EachFile:
+                                assetBundleSetName = $"{assetData.GUID}.bundle";
+                                break; 
+                            case AssetBundleData.PackSeparatelyMode.ByCategory:
+                                var packCategory = assetData.PackCategory;
+                                if (string.IsNullOrEmpty(packCategory)) packCategory = "default";
+                                assetBundleSetName = $"{assetBundleData.name}_{packCategory}.bundle";
+                                break; 
+                        }
                     }
 
                     var assetPath = AssetDatabase.GUIDToAssetPath(assetData.GUID);

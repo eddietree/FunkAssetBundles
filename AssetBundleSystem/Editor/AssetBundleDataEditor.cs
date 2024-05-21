@@ -33,6 +33,8 @@ namespace FunkAssetBundles
         private SerializedProperty HideInLists;
         private SerializedProperty ForceLoadInEditor;
         private SerializedProperty DoNotBuildForDedicatedServer;
+        private SerializedProperty PackMode;
+        private SerializedProperty PackCategories;
 
         private static bool _editorFoldout_browse_tools;
 
@@ -46,6 +48,8 @@ namespace FunkAssetBundles
             HideInLists = serializedObject.FindProperty("HideInLists");
             ForceLoadInEditor = serializedObject.FindProperty("ForceLoadInEditor");
             DoNotBuildForDedicatedServer = serializedObject.FindProperty("DoNotBuildForDedicatedServer");
+            PackMode = serializedObject.FindProperty("PackMode");
+            PackCategories = serializedObject.FindProperty("PackCategories");
         }
 
         // dependency stuff 
@@ -556,6 +560,11 @@ namespace FunkAssetBundles
 
         private void DrawTab_Browse(AssetBundleData instance, bool hasMultipleSelected)
         {
+            if(instance.PackSeparately && instance.PackMode == AssetBundleData.PackSeparatelyMode.ByCategory)
+            {
+                RefreshCategories(instance);
+            }
+
             // browser 
             EditorGUILayout.BeginVertical("GroupBox");
             {
@@ -565,11 +574,36 @@ namespace FunkAssetBundles
                     EditorGUILayout.PropertyField(EnabledInBuild);
                     EditorGUILayout.PropertyField(NoDependencies);
                     EditorGUILayout.PropertyField(LoadBundleOnInitialize);
-                    EditorGUILayout.PropertyField(PackSeparately);
                     EditorGUILayout.PropertyField(SceneBundle);
                     EditorGUILayout.PropertyField(HideInLists);
                     EditorGUILayout.PropertyField(ForceLoadInEditor);
                     EditorGUILayout.PropertyField(DoNotBuildForDedicatedServer);
+
+                    EditorGUILayout.PropertyField(PackSeparately);
+                    if(instance.PackSeparately)
+                    {
+                        EditorGUILayout.PropertyField(PackMode);
+
+                        if(instance.PackMode == AssetBundleData.PackSeparatelyMode.ByCategory)
+                        {
+                            EditorGUILayout.PropertyField(PackCategories);
+
+                            if(instance.PackCategories.Count < 1 || instance.PackCategories[0] != "default")
+                            {
+                                if(instance.PackCategories.Count < 1)
+                                {
+                                    instance.PackCategories.Add("default");
+                                }
+                                else
+                                {
+                                    instance.PackCategories[0] = "default";
+                                }
+
+                                EditorUtility.SetDirty(instance); 
+                            }
+
+                        }
+                    }
                 }
                 EditorGUILayout.EndVertical();
 
@@ -692,6 +726,8 @@ namespace FunkAssetBundles
                         // no search = paginated list of all assets in bundle 
                         if (string.IsNullOrEmpty(_searchQuery))
                         {
+                            DrawAsseHeaders(instance);
+
                             var startAtIndex = _assetPageIndex * _assetsPerPage;
                             for (var i = startAtIndex; i < startAtIndex + _assetsPerPage && i < assetsProperty.arraySize; ++i)
                             {
@@ -710,6 +746,8 @@ namespace FunkAssetBundles
                         // search results 
                         else
                         {
+                            DrawAsseHeaders(instance);
+
                             var startAtIndex = _queryPageIndex * _assetsPerPage;
                             for (var i = startAtIndex; i < startAtIndex + _assetsPerPage && i < _searchResults.Count; ++i)
                             {
@@ -1264,6 +1302,43 @@ namespace FunkAssetBundles
             public string propertyPath;
         }
 
+        private string[] _categories = new string[0];
+
+        private void RefreshCategories(AssetBundleData instance)
+        {
+            _categories = instance.PackCategories.ToArray(); 
+        }
+
+        private int FindIndexOfCategory(string category)
+        {
+            for(var i = 0; i < _categories.Length; ++i)
+            {
+                if(category == _categories[i])
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private void DrawAsseHeaders(AssetBundleData instance)
+        {
+            EditorGUILayout.BeginHorizontal();
+            {
+
+                EditorGUILayout.LabelField("Asset", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField("Bundle", EditorStyles.boldLabel, GUILayout.Width(128f));
+                if(instance.PackSeparately && instance.PackMode == AssetBundleData.PackSeparatelyMode.ByCategory)
+                {
+                    EditorGUILayout.LabelField("Category", EditorStyles.boldLabel, GUILayout.Width(128f));
+                }
+                EditorGUILayout.LabelField("x", EditorStyles.boldLabel, GUILayout.Width(64f));
+
+            }
+            EditorGUILayout.EndHorizontal(); 
+        }
+
         private bool DrawAsset(AssetBundleData instance, SerializedProperty assetsProperty, int i)
         {
             var assetProperty = assetsProperty.GetArrayElementAtIndex(i);
@@ -1286,6 +1361,20 @@ namespace FunkAssetBundles
                     assetsProperty.DeleteArrayElementAtIndex(i);
                     EditorGUILayout.EndHorizontal();
                     return true;
+                }
+
+                if(instance.PackSeparately && instance.PackMode == AssetBundleData.PackSeparatelyMode.ByCategory)
+                {
+                    var property_packCategory = assetProperty.FindPropertyRelative("PackCategory");
+                    var packCategory = property_packCategory.stringValue;
+
+                    var index_category = FindIndexOfCategory(packCategory);
+                    var newIndex_category = EditorGUILayout.Popup(index_category, _categories, GUILayout.Width(128f));
+                    if(newIndex_category != index_category)
+                    {
+                        property_packCategory.stringValue = _categories[newIndex_category];
+                        property_packCategory.serializedObject.ApplyModifiedProperties(); 
+                    }
                 }
 
                 if (GUILayout.Button("x", GUILayout.Width(64f)))

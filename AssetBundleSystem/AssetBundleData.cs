@@ -20,6 +20,19 @@ namespace FunkAssetBundles
         [Tooltip("In Editor, loads from this bundle will NOT use AssetDatabase, and instead will only use real asset bundles. Only enable this if you understand the implications.")] public bool ForceLoadInEditor;
         [Tooltip("When the 'isDedicatedServer' is set in the AssetBundleExporter API, this bundle will be skipped. Only enable this if you understand the implications.")] public bool DoNotBuildForDedicatedServer;
 
+        public PackSeparatelyMode PackMode = PackSeparatelyMode.EachFile;
+        public List<string> PackCategories = new List<string>()
+        {
+            "default",
+        }; 
+
+        [System.Serializable]
+        public enum PackSeparatelyMode
+        {
+            EachFile    = 1,
+            ByCategory  = 2
+        }
+
         [System.NonSerialized] private Dictionary<string, int> _lookupTable = new Dictionary<string, int>(System.StringComparer.Ordinal);
 
         public void RefreshLookupTable()
@@ -43,6 +56,19 @@ namespace FunkAssetBundles
             }
         }
 
+        public AssetBundleReferenceData FindByGuidRaw(string guid)
+        {
+            foreach(var assetReference in Assets)
+            {
+                if(assetReference.GUID == guid)
+                {
+                    return assetReference;
+                }
+            }
+
+            return null;
+        }
+
         public AssetBundleReferenceData FindByGuid(string guid)
         {
             if (_lookupTable.TryGetValue(guid, out int index))
@@ -61,6 +87,26 @@ namespace FunkAssetBundles
             }
 
             return _lookupTable.ContainsKey(guid);
+        }
+
+        public string GetPackedBundleDataName(AssetBundleReferenceData dataReference, string platformName, string assetBundleRoot, string defaultBundleFilename)
+        {
+            if (!PackSeparately)
+            {
+                return defaultBundleFilename; 
+            }
+
+            switch(PackMode)
+            {
+                case PackSeparatelyMode.EachFile:
+                    return $"{assetBundleRoot}/{platformName}/{dataReference.GUID}.bundle";
+                case PackSeparatelyMode.ByCategory:
+                    var packCategory = dataReference.PackCategory;
+                    if (string.IsNullOrEmpty(packCategory)) packCategory = "default";
+                    return $"{assetBundleRoot}/{platformName}/{name}_{packCategory}.bundle";
+            }
+
+            return defaultBundleFilename;
         }
 
 #if UNITY_EDITOR
