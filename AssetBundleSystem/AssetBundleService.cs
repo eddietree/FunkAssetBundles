@@ -862,7 +862,7 @@ namespace FunkAssetBundles
                 }
             }
 
-            var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle);
+            var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle, logErrors: logErrors);
             if (assetBundle == null)
             {
                 if(logErrors)
@@ -907,7 +907,7 @@ namespace FunkAssetBundles
                 return null;
             }
 
-            var subObj = GetSubAsset(reference, obj);
+            var subObj = GetSubAsset(reference, obj, allowInitializeBundle: allowInitializeBundle, logErrors: logErrors);
             if (previousRequest != null)
             {
                 CacheResult(reference, subObj);
@@ -1030,7 +1030,7 @@ namespace FunkAssetBundles
         /// <param name="bundle"></param>
         /// <param name="asset"></param>
         /// <returns></returns>
-        private T GetSubAsset<T>(AssetReference<T> reference, Object asset, bool allowInitializeBundle = false) where T : Object
+        private T GetSubAsset<T>(AssetReference<T> reference, Object asset, bool allowInitializeBundle = false, bool logErrors = true) where T : Object
         {
             // we don't live in a world this pure.
             // every day, we stray further from God's light.
@@ -1067,7 +1067,7 @@ namespace FunkAssetBundles
             // currently, only Sprites should be refereced via sub asset references 
             if (!string.IsNullOrEmpty(reference.SubAssetReference))
             {
-                var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle);
+                var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle, logErrors: logErrors);
                 if (assetBundle == null)
                 {
                     Debug.LogError($"no asset bundle found for {reference}");
@@ -1423,12 +1423,16 @@ namespace FunkAssetBundles
             return null;
         }
 
-        public AssetBundle TryGetAssetBundle<T>(AssetReference<T> reference, bool allowInitializeBundle = false) where T : Object
+        public AssetBundle TryGetAssetBundle<T>(AssetReference<T> reference, bool allowInitializeBundle = false, bool logErrors = true) where T : Object
         {
             var assetBundleData = GetAssetBundleContainer(reference);
             if (assetBundleData == null)
             {
-                Debug.LogError($"AssetBundleData not found for: {reference.Name} ({reference}). loaded bundles count: {_bundleCache.Count}");
+                if(logErrors)
+                {
+                    Debug.LogError($"AssetBundleData not found for: {reference.Name} ({reference}). loaded bundles count: {_bundleCache.Count}");
+                }
+
                 return null;
             }
 
@@ -1447,7 +1451,10 @@ namespace FunkAssetBundles
             // if not found, but we know the bundle.. just load the bundle? 
             if(!found && allowInitializeBundle)
             {
-                Debug.LogWarning($"Loading an asset from uninitialized bundle {assetBundleData.name}, initializing it now!");
+                if(logErrors)
+                {
+                    Debug.LogWarning($"Loading an asset from uninitialized bundle {assetBundleData.name}, initializing it now!");
+                }
             
                 SyncInitializeBundle(assetBundleData);
             
@@ -1468,11 +1475,14 @@ namespace FunkAssetBundles
             }
             else
             {
-                Debug.LogError($"AssetBundle '{assetBundleData.name}' not found? for: '{reference}'. loaded bundles count: {_bundleCache.Count}");
-
-                foreach (var entry in _bundleCache)
+                if(logErrors)
                 {
-                    Debug.LogError($"loaded: {entry.Key}");
+                    Debug.LogError($"AssetBundle '{assetBundleData.name}' not found? for: '{reference}'. loaded bundles count: {_bundleCache.Count}");
+
+                    foreach (var entry in _bundleCache)
+                    {
+                        Debug.LogError($"loaded: {entry.Key}");
+                    }
                 }
 
                 return null;
@@ -1591,7 +1601,7 @@ namespace FunkAssetBundles
                 yield break;
             }
 
-            var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle);
+            var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle, logErrors: logErrors);
             if (assetBundle == null)
             {
                 if(logErrors)
@@ -1648,7 +1658,7 @@ namespace FunkAssetBundles
         /// <typeparam name="T"></typeparam>
         /// <param name="reference"></param>
         /// <returns></returns>
-        public IEnumerator LoadAsyncCancellable<T>(AssetReference<T> reference, System.Func<bool> cancelIfTrue, bool allowInitializeBundle = false) where T : UnityEngine.Object
+        public IEnumerator LoadAsyncCancellable<T>(AssetReference<T> reference, System.Func<bool> cancelIfTrue, bool allowInitializeBundle = false, bool logErrors = true) where T : UnityEngine.Object
         {
             // reference.Reference = reference.Reference.ToLowerInvariant();
 
@@ -1736,7 +1746,7 @@ namespace FunkAssetBundles
                 yield break;
             }
 
-            var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle);
+            var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle, logErrors: logErrors);
             if (assetBundle == null)
             {
                 Debug.LogError($"did not find asset bundle containing the reference {reference}");
@@ -1855,7 +1865,7 @@ namespace FunkAssetBundles
             }
             else
             {
-                objResult = GetSubAsset(reference, asyncRequest.asset);
+                objResult = GetSubAsset(reference, asyncRequest.asset, logErrors: logErrors);
             }
 
             CacheResult(reference, objResult);
