@@ -150,6 +150,7 @@ namespace FunkAssetBundles
 
         [System.NonSerialized] private Dictionary<string, AssetBundle> _bundleCache = new Dictionary<string, AssetBundle>(System.StringComparer.Ordinal);
         [System.NonSerialized] private Dictionary<string, AssetCache> _assetCache = new Dictionary<string, AssetCache>(System.StringComparer.Ordinal); // key = GUID+SubAssetReference
+        [System.NonSerialized] private Dictionary<string, AssetBundle> _packedBundleCache = new Dictionary<string, AssetBundle>(); 
         [System.NonSerialized] private Coroutine _prewarmRoutine;
 
         private struct AssetCache
@@ -433,6 +434,16 @@ namespace FunkAssetBundles
                 }
             }
 
+            foreach(var entry in _packedBundleCache)
+            {
+                var bundle = entry.Value;
+                if(bundle != null)
+                {
+                    bundle.Unload(destroyInstancesToo);
+                    AssetBundle.Destroy(bundle); 
+                }
+            }
+
             foreach (var entry in _assetCache)
             {
                 var cache = entry.Value;
@@ -445,11 +456,13 @@ namespace FunkAssetBundles
             }
 
             _bundleCache.Clear();
+            _packedBundleCache.Clear();
+
             _assetCache.Clear();
             _prewarmAssetRequests.Clear();
 
             // unload anything left over 
-            AssetBundle.UnloadAllAssetBundles(true); 
+            AssetBundle.UnloadAllAssetBundles(destroyInstancesToo); 
 
             // crashes in il2cpp sometimes (?) 
             Caching.ClearCache();
@@ -644,46 +657,48 @@ namespace FunkAssetBundles
 
                     assetBundleRef = assetBundleData.GetPackedBundleDataName(bundleAsset, platformName, assetBundleRoot, assetBundleRef);
 
-                    Debug.LogFormat("AssetBundleService preloading (packed separately bundle) {0}: {1}", assetBundleRef, bundleAsset.AssetBundleReference);
-
-                    AssetBundle assetBundle;
-
-                    if(PRELOAD_BUNDLES_IN_MEMORY)
+                    if(!_packedBundleCache.TryGetValue(assetBundleRef, out var psAssetBundle))
                     {
-                        var bundleBytes = System.IO.File.ReadAllBytes(assetBundleRef);
-                        var assetBundleRequest = AssetBundle.LoadFromMemoryAsync(bundleBytes);
-                        
-                        while (!assetBundleRequest.isDone)
+                        Debug.LogFormat("AssetBundleService preloading (packed separately bundle) {0}: {1}", assetBundleRef, bundleAsset.AssetBundleReference);
+
+                        if (PRELOAD_BUNDLES_IN_MEMORY)
                         {
-                            yield return null;
+                            var bundleBytes = System.IO.File.ReadAllBytes(assetBundleRef);
+                            var assetBundleRequest = AssetBundle.LoadFromMemoryAsync(bundleBytes);
+
+                            while (!assetBundleRequest.isDone)
+                            {
+                                yield return null;
+                            }
+
+                            psAssetBundle = assetBundleRequest.assetBundle;
+                        }
+                        else
+                        {
+
+                            var assetBundleRequest = AssetBundle.LoadFromFileAsync(assetBundleRef);
+
+                            while (!assetBundleRequest.isDone)
+                            {
+                                yield return null;
+                            }
+
+                            psAssetBundle = assetBundleRequest.assetBundle;
                         }
 
-                        assetBundle = assetBundleRequest.assetBundle;
-                    }
-                    else
-                    {
-
-                        var assetBundleRequest = AssetBundle.LoadFromFileAsync(assetBundleRef);
-
-                        while (!assetBundleRequest.isDone)
+                        if (psAssetBundle == null)
                         {
-                            yield return null;
+                            Debug.LogErrorFormat("AssetBundleService: * failed to load {0}", assetBundleRef);
+                            continue;
                         }
 
-                        assetBundle = assetBundleRequest.assetBundle;
+                        var assetNames = psAssetBundle.GetAllAssetNames();
+
+                        Debug.LogFormat("AssetBundleService: * loaded {0} which contains {1} assets.", psAssetBundle.name, assetNames.Length);
+                        _packedBundleCache.Add(assetBundleRef, psAssetBundle); 
                     }
 
-                    if (assetBundle == null)
-                    {
-                        Debug.LogErrorFormat("AssetBundleService: * failed to load {0}", assetBundleRef);
-                        continue;
-                    }
-
-                    var assetNames = assetBundle.GetAllAssetNames();
-
-                    Debug.LogFormat("AssetBundleService: * loaded {0} which contains {1} assets.", assetBundle.name, assetNames.Length);
-
-                    _bundleCache.Add(bundleAsset.GUID, assetBundle);
+                    _bundleCache.Add(bundleAsset.GUID, psAssetBundle);
                 }
             }
             else
@@ -775,19 +790,23 @@ namespace FunkAssetBundles
                 {
                     assetBundleRef = assetBundleData.GetPackedBundleDataName(assetData, platformName, assetBundleRoot, assetBundleRef);
 
-                    AssetBundle assetBundle;
-                    if(PRELOAD_BUNDLES_IN_MEMORY)
+                    if(!_packedBundleCache.TryGetValue(assetBundleRef, out var psAssetBundle))
                     {
-                        var assetBundleBytes = System.IO.File.ReadAllBytes(assetBundleRef);
-                        assetBundle = AssetBundle.LoadFromMemory(assetBundleBytes);
-                    }
-                    else
-                    {
-                        assetBundle = AssetBundle.LoadFromFile(assetBundleRef);
+                        if(PRELOAD_BUNDLES_IN_MEMORY)
+                        {
+                            var assetBundleBytes = System.IO.File.ReadAllBytes(assetBundleRef);
+                            psAssetBundle = AssetBundle.LoadFromMemory(assetBundleBytes);
+                        }
+                        else
+                        {
+                            psAssetBundle = AssetBundle.LoadFromFile(assetBundleRef);
+                        }
+
+                        var assetNames = psAssetBundle.GetAllAssetNames();
+                        _packedBundleCache.Add(assetBundleRef, psAssetBundle); 
                     }
 
-                    var assetNames = assetBundle.GetAllAssetNames();
-                    _bundleCache.Add(assetData.GUID, assetBundle);
+                    _bundleCache.Add(assetData.GUID, psAssetBundle);
                 }
             }
             else
@@ -1376,6 +1395,7 @@ namespace FunkAssetBundles
                     var bundleData = GetAssetBundleContainer(reference);
                     if (bundleData == null || !bundleData.ForceLoadInEditor)
                     {
+                        awaiting.Add(null);
                         continue;
                     }
                 }
@@ -1385,7 +1405,8 @@ namespace FunkAssetBundles
                 if (cached != null)
                 {
                     // Debug.LogFormat("AssetBundleService.LoadAsyncBatched: skipped {0}, already loaded", references[i].Name);
-                    references.RemoveAt(i);
+                    // references.RemoveAt(i);
+                    awaiting.Add(null);
                     continue;
                 }
 
