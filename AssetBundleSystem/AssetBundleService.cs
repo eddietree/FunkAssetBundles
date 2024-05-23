@@ -424,25 +424,26 @@ namespace FunkAssetBundles
 
             Debug.Log($"UnloadAllCachedAssets({destroyInstancesToo}) - unloading asset bundles");
 
-            foreach (var entry in _bundleCache)
-            {
-                var bundle = entry.Value;
-                if(bundle != null)
-                {
-                    bundle.Unload(destroyInstancesToo);
-                    AssetBundle.Destroy(bundle);
-                }
-            }
-
-            foreach(var entry in _packedBundleCache)
-            {
-                var bundle = entry.Value;
-                if(bundle != null)
-                {
-                    bundle.Unload(destroyInstancesToo);
-                    AssetBundle.Destroy(bundle); 
-                }
-            }
+            // not necessary because of AssetBundle.UnloadAllAssetBundles
+            // foreach (var entry in _bundleCache)
+            // {
+            //     var bundle = entry.Value;
+            //     if(bundle != null)
+            //     {
+            //         bundle.Unload(destroyInstancesToo);
+            //         AssetBundle.Destroy(bundle);
+            //     }
+            // }
+            // 
+            // foreach(var entry in _packedBundleCache)
+            // {
+            //     var bundle = entry.Value;
+            //     if(bundle != null)
+            //     {
+            //         bundle.Unload(destroyInstancesToo);
+            //         AssetBundle.Destroy(bundle); 
+            //     }
+            // }
 
             foreach (var entry in _assetCache)
             {
