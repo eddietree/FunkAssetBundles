@@ -435,7 +435,15 @@ namespace FunkAssetBundles
 
                 UnityEngine.Profiling.Profiler.EndSample();
 
-                AssetReferenceCacheAndImporter._editorAssetCache.Add(assetCacheKey, asset); 
+                if(AssetReferenceCacheAndImporter._editorAssetCache.TryGetValue(assetCacheKey, out var existingAsset))
+                {
+                    AssetReferenceCacheAndImporter._editorAssetCache[assetCacheKey] = asset;
+                }
+                else
+                {
+                    AssetReferenceCacheAndImporter._editorAssetCache.Add(assetCacheKey, asset); 
+                }
+
                 return asset;
             }
             else

@@ -180,7 +180,7 @@ namespace FunkAssetBundles
 
             bundleOptions |= BuildAssetBundleOptions.DisableLoadAssetByFileName;                // saves lookup time 
             bundleOptions |= BuildAssetBundleOptions.DisableLoadAssetByFileNameWithExtension;   // saves lookup time 
-            bundleOptions |= BuildAssetBundleOptions.AssetBundleStripUnityVersion;
+            // bundleOptions |= BuildAssetBundleOptions.AssetBundleStripUnityVersion;           // causes issues
 
 #if UNITY_2022_3_OR_NEWER
             bundleOptions |= BuildAssetBundleOptions.UseContentHash;
