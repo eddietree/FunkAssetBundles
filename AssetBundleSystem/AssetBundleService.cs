@@ -148,9 +148,9 @@ namespace FunkAssetBundles
         }
 #endif
 
+        [System.NonSerialized] private Dictionary<string, AssetBundleData> _bundleDataLookup = new Dictionary<string, AssetBundleData>(System.StringComparer.Ordinal);
         [System.NonSerialized] private Dictionary<string, AssetBundle> _bundleCache = new Dictionary<string, AssetBundle>(System.StringComparer.Ordinal);
         [System.NonSerialized] private Dictionary<string, AssetCache> _assetCache = new Dictionary<string, AssetCache>(System.StringComparer.Ordinal); // key = GUID+SubAssetReference
-        [System.NonSerialized] private Dictionary<string, AssetBundle> _packedBundleCache = new Dictionary<string, AssetBundle>(); 
         [System.NonSerialized] private Coroutine _prewarmRoutine;
 
         private struct AssetCache
@@ -434,16 +434,6 @@ namespace FunkAssetBundles
             //         AssetBundle.Destroy(bundle);
             //     }
             // }
-            // 
-            // foreach(var entry in _packedBundleCache)
-            // {
-            //     var bundle = entry.Value;
-            //     if(bundle != null)
-            //     {
-            //         bundle.Unload(destroyInstancesToo);
-            //         AssetBundle.Destroy(bundle); 
-            //     }
-            // }
 
             foreach (var entry in _assetCache)
             {
@@ -457,7 +447,7 @@ namespace FunkAssetBundles
             }
 
             _bundleCache.Clear();
-            _packedBundleCache.Clear();
+            _bundleDataLookup.Clear();
 
             _assetCache.Clear();
             _prewarmAssetRequests.Clear();
@@ -475,39 +465,61 @@ namespace FunkAssetBundles
             }
         }
 
-        public void UnloadSingleBundle(AssetBundleData bundleData, bool destroyInstancesToo)
+        private void UnloadSingleRealBundle(AssetBundle assetBundle, bool destroyInstancesToo, string bundleCacheKey)
         {
-            if(!_bundleCache.TryGetValue(bundleData.name, out var assetBundle))
-            {
-                return;
-            }
-
-            if(assetBundle == null)
-            {
-                return; 
-            }
-
             var bundleName = assetBundle.name;
 
             // unload this bundle 
             assetBundle.Unload(destroyInstancesToo);
-            _bundleCache.Remove(bundleData.name);
+            _bundleCache.Remove(bundleCacheKey);
 
             // remove cache entries related to this bundle 
             var cacheToClear = new List<string>();
 
-            foreach(var cache in _assetCache)
+            foreach (var cache in _assetCache)
             {
                 var data = cache.Value;
-                if(bundleName.Equals(data.BundleName, System.StringComparison.Ordinal))
+                if (bundleName.Equals(data.BundleName, System.StringComparison.Ordinal))
                 {
                     cacheToClear.Add(cache.Key);
                 }
             }
 
-            foreach(var key in cacheToClear)
+            foreach (var key in cacheToClear)
             {
-                _assetCache.Remove(key); 
+                _assetCache.Remove(key);
+            }
+        }
+
+        public void UnloadSingleBundleData(AssetBundleData bundleData, bool destroyInstancesToo)
+        {
+            if(bundleData.PackSeparately)
+            {
+                foreach(var assetReferenceData in bundleData.Assets)
+                {
+                    var bundleName = BuildPackedAssetBundleName(bundleData, assetReferenceData.GUID);
+
+                    if(!_bundleCache.TryGetValue(bundleName, out var assetBundle))
+                    {
+                        continue;
+                    }
+
+                    UnloadSingleRealBundle(assetBundle, destroyInstancesToo, bundleName);
+                }
+            }
+            else
+            {
+                if(!_bundleCache.TryGetValue(bundleData.name, out var assetBundle))
+                {
+                    return;
+                }
+
+                if(assetBundle == null)
+                {
+                    return; 
+                }
+
+                UnloadSingleRealBundle(assetBundle, destroyInstancesToo, bundleData.name); 
             }
         }
 
@@ -557,6 +569,8 @@ namespace FunkAssetBundles
 
             Debug.LogFormat("AssetBundleService: preloading {0} asset bundles (not their contents)...", AssetBundleDatas.Count);
 
+            _bundleDataLookup.Clear();
+
             // batch together loading bundles, async 
             var assetBundleRequests = new List<Coroutine>();
             for (var i = 0; i < AssetBundleDatas.Count; ++i)
@@ -574,6 +588,17 @@ namespace FunkAssetBundles
                     }
                 }
 #endif
+
+                foreach(var asset in assetBundleData.Assets)
+                {
+                    if(_bundleDataLookup.ContainsKey(asset.GUID))
+                    {
+                        Debug.LogError($"Duplicate key detected {asset.GUID} - is this asset assigned to two bundles?");
+                        continue;
+                    }
+
+                    _bundleDataLookup.Add(asset.GUID, assetBundleData); 
+                }
 
                 if (assetBundleData.LoadBundleOnInitialize)
                 {
@@ -597,9 +622,9 @@ namespace FunkAssetBundles
             _prewarmRoutine = StartCoroutine(DoHandlePrewarmAssets());
         }
 
-        public Coroutine InitializeSingleBundle(AssetBundleData assetBundleData)
+        public Coroutine InitializeSingleBundle(AssetBundleData assetBundleData, string specificAssetGuid = null)
         {
-            return StartCoroutine(DoAsyncInitializeBundle(assetBundleData));
+            return StartCoroutine(DoAsyncInitializeBundle(assetBundleData, specificAssetGuid: specificAssetGuid));
         }
 
         public bool GetBundleInitialized(AssetBundleData assetBundleData)
@@ -607,7 +632,7 @@ namespace FunkAssetBundles
             return _bundleCache.ContainsKey(assetBundleData.name); 
         }
 
-        private IEnumerator DoAsyncInitializeBundle(AssetBundleData assetBundleData)
+        private IEnumerator DoAsyncInitializeBundle(AssetBundleData assetBundleData, string specificAssetGuid = null)
         {
             if (assetBundleData == null)
             {
@@ -651,14 +676,14 @@ namespace FunkAssetBundles
             {
                 foreach (var bundleAsset in assetBundleData.Assets)
                 {
-                    if (_bundleCache.ContainsKey(bundleAsset.GUID))
+                    if(!string.IsNullOrEmpty(specificAssetGuid) && !specificAssetGuid.Equals(bundleAsset.GUID, System.StringComparison.Ordinal))
                     {
                         continue;
                     }
 
                     assetBundleRef = assetBundleData.GetPackedBundleDataName(bundleAsset, platformName, assetBundleRoot, assetBundleRef);
 
-                    if(!_packedBundleCache.TryGetValue(assetBundleRef, out var psAssetBundle))
+                    if(!_bundleCache.TryGetValue(assetBundleRef, out var psAssetBundle))
                     {
                         Debug.LogFormat("AssetBundleService preloading (packed separately bundle) {0}: {1}", assetBundleRef, bundleAsset.AssetBundleReference);
 
@@ -696,10 +721,8 @@ namespace FunkAssetBundles
                         var assetNames = psAssetBundle.GetAllAssetNames();
 
                         Debug.LogFormat("AssetBundleService: * loaded {0} which contains {1} assets.", psAssetBundle.name, assetNames.Length);
-                        _packedBundleCache.Add(assetBundleRef, psAssetBundle); 
+                        _bundleCache.Add(assetBundleRef, psAssetBundle); 
                     }
-
-                    _bundleCache.Add(bundleAsset.GUID, psAssetBundle);
                 }
             }
             else
@@ -745,7 +768,12 @@ namespace FunkAssetBundles
             }
         }
 
-        public void SyncInitializeBundle(AssetBundleData assetBundleData)
+        /// <summary>
+        /// Initializes only a single bundle. If you specify specificAssetGuid and a "packed separately" AssetBundleData, you will only initialize the bundle containing specificAssetGuid.
+        /// </summary>
+        /// <param name="assetBundleData"></param>
+        /// <param name="specificAssetGuid"></param>
+        public void SyncInitializeBundle(AssetBundleData assetBundleData, string specificAssetGuid = null)
         {
             if (assetBundleData == null)
             {
@@ -789,9 +817,14 @@ namespace FunkAssetBundles
             {
                 foreach (var assetData in assetBundleData.Assets)
                 {
+                    if(!string.IsNullOrEmpty(specificAssetGuid) && !specificAssetGuid.Equals(assetData.GUID, System.StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
                     assetBundleRef = assetBundleData.GetPackedBundleDataName(assetData, platformName, assetBundleRoot, assetBundleRef);
 
-                    if(!_packedBundleCache.TryGetValue(assetBundleRef, out var psAssetBundle))
+                    if(!_bundleCache.TryGetValue(assetBundleRef, out var psAssetBundle))
                     {
                         if(PRELOAD_BUNDLES_IN_MEMORY)
                         {
@@ -804,10 +837,8 @@ namespace FunkAssetBundles
                         }
 
                         var assetNames = psAssetBundle.GetAllAssetNames();
-                        _packedBundleCache.Add(assetBundleRef, psAssetBundle); 
+                        _bundleCache.Add(assetBundleRef, psAssetBundle); 
                     }
-
-                    _bundleCache.Add(assetData.GUID, psAssetBundle);
                 }
             }
             else
@@ -823,7 +854,6 @@ namespace FunkAssetBundles
                 {
                     assetBundle = AssetBundle.LoadFromFile(assetBundleRef);
                 }
-
 
                 var assetNames = assetBundle.GetAllAssetNames();
                 _bundleCache.Add(assetBundleData.name, assetBundle);
@@ -843,7 +873,7 @@ namespace FunkAssetBundles
 #endif
         }
 
-        public T LoadSync<T>(AssetReference<T> reference, bool logErrors = true, bool allowInitializeBundle = false) where T : Object
+        public T LoadSync<T>(AssetReference<T> reference, bool logErrors = true, bool allowInitializeBundle = true) where T : Object
         {
             if (string.IsNullOrEmpty(reference.Guid))
             {
@@ -955,6 +985,13 @@ namespace FunkAssetBundles
 
         public AssetBundleData GetAssetBundleContainer(string guid) 
         {
+            if(_bundleDataLookup.TryGetValue(guid, out var bundleData))
+            {
+                return bundleData;
+            }
+
+            Debug.LogError($"[AssetBundleService] Failed to quickly locate guid {guid}'s bundleData? Looking manually.");
+
             foreach (var bundle in AssetBundleDatas)
             {
                 if(bundle == null)
@@ -967,6 +1004,8 @@ namespace FunkAssetBundles
                     return bundle;
                 }
             }
+
+            Debug.LogError($"[AssetBundleService] Failed to slowly locate guid {guid}.");
 
             return null;
         }
@@ -1445,6 +1484,60 @@ namespace FunkAssetBundles
             return null;
         }
 
+        public string BuildPackedAssetBundleName(AssetBundleData assetBundleData, string assetGuid)
+        {
+            var isDedicatedServer = false;
+
+#if UNITY_SERVER
+            isDedicatedServer = true;
+#endif
+
+            var bundleAssetReferenceData = assetBundleData.FindByGuid(assetGuid);
+
+            if(bundleAssetReferenceData == null)
+            {
+                Debug.LogError($"[AssetBundleService] asset {assetGuid} not found in bundle {assetBundleData.name}?");
+                return string.Empty;
+            }
+
+            var platformName = GetRuntimePlatformName(Application.platform, isDedicatedServer);
+            var assetBundleDataName = GetBundleFilenameFromBundleName(Application.platform, isDedicatedServer, assetBundleData.name);
+            var assetBundleRoot = GetBundlesDeployFolder();
+            var assetBundleRef = $"{assetBundleRoot}/{assetBundleDataName}";
+            assetBundleRef = assetBundleData.GetPackedBundleDataName(bundleAssetReferenceData, platformName, assetBundleRoot, assetBundleRef);
+
+            return assetBundleRef; 
+        }
+
+        public IEnumerator DoEnsureAssetBundleInitialized<T>(AssetReference<T> reference, bool logErrors = true) where T : Object
+        {
+            var assetBundleData = GetAssetBundleContainer(reference);
+            if (assetBundleData == null)
+            {
+                if (logErrors)
+                {
+                    Debug.LogError($"AssetBundleData not found for: {reference.Name} ({reference}). loaded bundles count: {_bundleCache.Count}");
+                }
+
+                yield break; 
+            }
+
+            bool found; 
+            if (assetBundleData.PackSeparately)
+            {
+                found = _bundleCache.TryGetValue(BuildPackedAssetBundleName(assetBundleData, reference.Guid), out _);
+            }
+            else
+            {
+                found = _bundleCache.TryGetValue(assetBundleData.name, out _);
+            }
+
+            if (!found)
+            {
+                yield return InitializeSingleBundle(assetBundleData, specificAssetGuid: reference.Guid);
+            }
+        }
+
         public AssetBundle TryGetAssetBundle<T>(AssetReference<T> reference, bool allowInitializeBundle = false, bool logErrors = true) where T : Object
         {
             var assetBundleData = GetAssetBundleContainer(reference);
@@ -1458,11 +1551,12 @@ namespace FunkAssetBundles
                 return null;
             }
 
-            bool found;
-            AssetBundle bundle;
+            bool found = false;
+            AssetBundle bundle = null;
+
             if (assetBundleData.PackSeparately)
             {
-                found = _bundleCache.TryGetValue(reference.Guid, out bundle);
+                found = _bundleCache.TryGetValue(BuildPackedAssetBundleName(assetBundleData, reference.Guid), out bundle);
             }
             else
             {
@@ -1478,11 +1572,11 @@ namespace FunkAssetBundles
                     Debug.LogWarning($"Loading an asset from uninitialized bundle {assetBundleData.name}, initializing it now!");
                 }
             
-                SyncInitializeBundle(assetBundleData);
+                SyncInitializeBundle(assetBundleData, specificAssetGuid: reference.Guid);
             
                 if (assetBundleData.PackSeparately)
                 {
-                    found = _bundleCache.TryGetValue(reference.Guid, out bundle);
+                    found = _bundleCache.TryGetValue(BuildPackedAssetBundleName(assetBundleData, reference.Guid), out bundle);
                 }
                 else
                 {
@@ -1552,11 +1646,18 @@ namespace FunkAssetBundles
         /// <typeparam name="T"></typeparam>
         /// <param name="reference"></param>
         /// <returns></returns>
-        public IEnumerator LoadAsync<T>(AssetReference<T> reference, bool logErrors = true, bool allowInitializeBundle = false) where T : UnityEngine.Object
+        public IEnumerator LoadAsync<T>(AssetReference<T> reference, bool logErrors = true, bool allowInitializeBundle = true) where T : UnityEngine.Object
         {
             // reference.Reference = reference.Reference.ToLowerInvariant();
 
-            yield return new WaitAssetBundleServiceReady();
+#if UNITY_EDITOR
+            var stackTrace = System.Environment.StackTrace;
+#endif
+
+            if (!GetIsInitialized())
+            {
+                yield return new WaitAssetBundleServiceReady();
+            }
 
 #if UNITY_EDITOR
             if (EditorGetAssetDatabaseEnabled())
@@ -1623,6 +1724,12 @@ namespace FunkAssetBundles
                 yield break;
             }
 
+            // async loading this causes issues when trying to load the same asset multiple times 
+            // if(allowInitializeBundle)
+            // {
+            //     yield return DoEnsureAssetBundleInitialized(reference, logErrors: logErrors);
+            // }
+
             var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle, logErrors: logErrors);
             if (assetBundle == null)
             {
@@ -1660,6 +1767,15 @@ namespace FunkAssetBundles
                 handle = assetBundle.LoadAssetAsync<T>(assetBundleReference);
             }
 
+#if UNITY_EDITOR
+            if(_assetCache.ContainsKey(reference.GetCacheKey()))
+            {
+                Debug.LogError("same key");
+                Debug.LogError(stackTrace);
+                yield return handle; 
+            }
+#endif
+
             _assetCache.Add(reference.GetCacheKey(), new AssetCache()
             {
                 Asset = (Object)null,
@@ -1672,7 +1788,6 @@ namespace FunkAssetBundles
 
             yield return handle;
         }
-
 
         /// <summary>
         /// Queues up an async bundle request. The bundle requested is parsed from the reference string passed in. Returns the handle, which can be yielded. 

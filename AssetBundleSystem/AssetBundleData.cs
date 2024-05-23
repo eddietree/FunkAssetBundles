@@ -71,6 +71,11 @@ namespace FunkAssetBundles
 
         public AssetBundleReferenceData FindByGuid(string guid)
         {
+            if (_lookupTable == null || _lookupTable.Count == 0)
+            {
+                RefreshLookupTable();
+            }
+
             if (_lookupTable.TryGetValue(guid, out int index))
             {
                 return Assets[index];
@@ -81,7 +86,7 @@ namespace FunkAssetBundles
 
         public bool ContainsAssetRef(string guid)
         {
-            if(_lookupTable == null)
+            if(_lookupTable == null || _lookupTable.Count == 0)
             {
                 RefreshLookupTable();
             }
