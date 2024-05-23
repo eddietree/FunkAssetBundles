@@ -54,6 +54,11 @@ namespace FunkAssetBundles
 
         private static void TryDeployBundles()
         {
+            if(AssetBundleService.EditorGetAssetDatabaseEnabled())
+            {
+                return;
+            }
+
             if (AutoDeployBundlesOnPlay)
             {
                 if (AutoDeployOnlySometimes)

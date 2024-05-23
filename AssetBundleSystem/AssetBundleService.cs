@@ -1633,10 +1633,6 @@ namespace FunkAssetBundles
         {
             // reference.Reference = reference.Reference.ToLowerInvariant();
 
-#if UNITY_EDITOR
-            var stackTrace = System.Environment.StackTrace;
-#endif
-
             if (!GetIsInitialized())
             {
                 yield return new WaitAssetBundleServiceReady();
