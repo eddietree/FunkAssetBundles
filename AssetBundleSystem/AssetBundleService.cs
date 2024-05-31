@@ -547,17 +547,17 @@ namespace FunkAssetBundles
         {
             _initialized = false;
 
-#if UNITY_ANDROID
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // the streaming assets should be in the obb file, if not then the uploaded obb file is likely wrongly named
+            // the filename must be EXACTLY: main.$VERSION.com.{CompanyName}.{AppName}.obb
+            // if the version is wrong, it will not load
 
-        // the streaming assets should be in the obb file, if not then the uploaded obb file is likely wrongly named
-        // the filename must be EXACTLY: main.$VERSION.com.FunktronicLabs.TheLightBrigade.obb
-        // if the version is wrong, it will not load
+            // Application.streamingAssetsPath comparison with regular and split builds 
+            // JAR: jar:file:///data/app/com.{CompanyName}.{AppName}-{XXX}==/base.apk
+            // OBB: /sdcard/Android/obb/com.{CompanyName}.{AppName}/main.1.com.{CompanyName}.{AppName}.obb
 
-        // Application.streamingAssetsPath comparison with regular and split builds 
-        // JAR: jar:file:///data/app/com.FunktronicLabs.TheLightBrigade-H3fov1HMiE6OmEDHQjjGEw==/base.apk
-        // OBB: /sdcard/Android/obb/com.FunktronicLabs.TheLightBrigade/main.1.com.FunktronicLabs.TheLightBrigade.obb
-
-        if (Application.streamingAssetsPath.Contains("TheLightBrigade.obb") == false)
+            
+            if (Application.streamingAssetsPath.Contains($"{Application.productName}.obb") == false)
         {
             Debug.LogErrorFormat("AssetBundleService: streaming assets path is not an .obb file, likely did not upload the obb file correctly");
             Debug.LogErrorFormat("AssetBundleService: terminating now, because nothing will work");
