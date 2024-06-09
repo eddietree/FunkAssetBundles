@@ -21,6 +21,13 @@ namespace FunkAssetBundles
     public class AssetBundleExporter
         : MonoBehaviour
     {
+        /// <summary>
+        /// If none of the bundles are using the "No Dependency" flag, then do not remove bundle metadata from unity assets after we are finished building bundles. 
+        /// This is to improve build times, on projects with a lot of assets with long import times. 
+        /// If you have bundles with "no dependency" toggled on, this flag does nothing, and things will still take a long time to import.
+        /// </summary>
+        public const bool IF_NO_ZERO_DEPENDENCY_BUNDLES_DONT_REMOVE_BUNDLE_TAGS = true; 
+
 #if UNITY_EDITOR
         public static string GetBundlesBuildFolder()
         {
@@ -203,6 +210,8 @@ namespace FunkAssetBundles
                 Directory.CreateDirectory(buildRoot);
             }
 
+            var any_no_dependency_bundles_built = false;
+
             foreach (var assetBundleData in assetBundleDatas)
             {
                 if(!assetBundleData.EnabledInBuild)
@@ -231,6 +240,8 @@ namespace FunkAssetBundles
                 // prepare assets for export 
                 Debug.LogFormat("AssetBundleExporter.BuildBundlesForTarget: removing asset tags...");
                 RemoveAssetBundleTagsFromAssets();
+
+                any_no_dependency_bundles_built = true; 
             }
 
             var foundBundlesWithDependencies = false;
@@ -265,7 +276,17 @@ namespace FunkAssetBundles
                 InternalBuildTaggedBundles(buildRoot, bundleOptions, platform);
             }
 
-            RemoveAssetBundleTagsFromAssets();
+            var remove_tags = false;
+
+            if(any_no_dependency_bundles_built || !IF_NO_ZERO_DEPENDENCY_BUNDLES_DONT_REMOVE_BUNDLE_TAGS)
+            {
+                remove_tags = true; 
+            }
+
+            if(remove_tags)
+            {
+                RemoveAssetBundleTagsFromAssets();
+            }
         }
 
         private static void InternalBuildTaggedBundles(string buildRoot, BuildAssetBundleOptions bundleOptions, BuildTarget platform, bool dryRun = false)
