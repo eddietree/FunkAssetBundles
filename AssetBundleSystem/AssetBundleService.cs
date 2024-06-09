@@ -2181,6 +2181,8 @@ namespace FunkAssetBundles
             if (split == null || split.Length == 0) return null;
 
             var name = split[split.Length - 1];
+                name = name.Replace(".unity", string.Empty);
+
             return name;
         }
     }
