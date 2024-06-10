@@ -28,6 +28,11 @@ namespace FunkAssetBundles
         /// </summary>
         public const bool IF_NO_ZERO_DEPENDENCY_BUNDLES_DONT_REMOVE_BUNDLE_TAGS = true; 
 
+        /// <summary>
+        /// If true, data safety stuff will be ran before every bundle build. For example, duplicate asset references will automatically be removed from bundles. 
+        /// </summary>
+        public const bool RUN_SAFETY_SCANS_ON_BUILD = true; 
+
 #if UNITY_EDITOR
         public static string GetBundlesBuildFolder()
         {
@@ -210,6 +215,21 @@ namespace FunkAssetBundles
                 Directory.CreateDirectory(buildRoot);
             }
 
+            // safety checks 
+            if(RUN_SAFETY_SCANS_ON_BUILD)
+            {
+                foreach (var assetBundleData in assetBundleDatas)
+                {
+                    assetBundleData.EditorRemoveDuplicateReferences();
+
+                    if(!assetBundleData.NoDependencies)
+                    {
+                        assetBundleData.EditorRemoveOurAssetsFromOtherBundles(); 
+                    }
+                }
+            }
+
+            // build 
             var any_no_dependency_bundles_built = false;
 
             foreach (var assetBundleData in assetBundleDatas)
