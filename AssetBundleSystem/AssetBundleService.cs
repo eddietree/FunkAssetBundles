@@ -594,7 +594,7 @@ namespace FunkAssetBundles
                 {
                     if(_bundleDataLookup.ContainsKey(asset.GUID))
                     {
-                        Debug.LogError($"Duplicate key detected {asset.GUID} - is this asset assigned to two bundles?");
+                        Debug.LogError($"Duplicate key detected {asset.AssetBundleReference} ({asset.GUID}) - is this asset assigned to two bundles?");
                         continue;
                     }
 
