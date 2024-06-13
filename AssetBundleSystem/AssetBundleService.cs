@@ -62,6 +62,7 @@ namespace FunkAssetBundles
 
         public const bool PRELOAD_BUNDLES_IN_MEMORY = false;
         public const bool ASYNC_INITIALIZE_FROM_LOADS = false;
+        public const bool UNLOAD_BUNDLES_ON_INITIALIZE = true;
 
 #if UNITY_EDITOR
         // when true, the editor will load things from AssetDatabase instead of from asset bundles. 
@@ -565,8 +566,14 @@ namespace FunkAssetBundles
         }
 #endif
 
+            // fixes an issue in the editor where bundles sometimes do not unload while shutting down play mode 
+            if(UNLOAD_BUNDLES_ON_INITIALIZE)
+            {
+                AssetBundle.UnloadAllAssetBundles(true);
+            }
+
             var stopwatch = new System.Diagnostics.Stopwatch();
-            stopwatch.Start();
+                stopwatch.Start();
 
             Debug.LogFormat("AssetBundleService: preloading {0} asset bundles (not their contents)...", AssetBundleDatas.Count);
 
