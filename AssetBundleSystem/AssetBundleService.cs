@@ -879,15 +879,23 @@ namespace FunkAssetBundles
                 // todo: clear GenericDictionary<T>? 
             }
 #endif
+
+            _initialized = false; 
         }
 
         public T LoadSync<T>(AssetReference<T> reference, bool logErrors = true, bool allowInitializeBundle = true) where T : Object
         {
+            if(!GetIsInitialized())
+            {
+                Debug.LogError($"[AssetBundleService] Tried to LoadSync, but we're not yet initialized.");
+                return null; 
+            }
+
             if (string.IsNullOrEmpty(reference.Guid))
             {
                 if(logErrors)
                 {
-                    Debug.LogError($"LoadAsync() Requested null reference? {reference.Name} ({reference.Guid}:{reference.LocalFileId})");
+                    Debug.LogError($"[AssetBundleService] LoadAsync() Requested null reference? {reference.Name} ({reference.Guid}:{reference.LocalFileId})");
                 }
 
                 return null;
