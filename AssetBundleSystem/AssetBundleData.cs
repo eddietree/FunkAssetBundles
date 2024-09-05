@@ -38,7 +38,17 @@ namespace FunkAssetBundles
         public void RefreshLookupTable()
         {
 #if UNITY_EDITOR
-            EditorRefreshAssetDatabasePaths();
+            var refreshAssetDatabsePaths = true;
+
+            if(Application.isPlaying && AssetBundleService.EditorGetAssetDatabaseEnabled())
+            {
+                refreshAssetDatabsePaths = false; 
+            }
+
+            if (refreshAssetDatabsePaths)
+            {
+                EditorRefreshAssetDatabasePaths();
+            }
 #endif
 
             _lookupTable.Clear();
