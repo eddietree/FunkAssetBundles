@@ -114,11 +114,11 @@ namespace FunkAssetBundles
             switch(PackMode)
             {
                 case PackSeparatelyMode.EachFile:
-                    return $"{assetBundleRoot}/{platformName}/{dataReference.GUID}.bundle";
+                    return $"{assetBundleRoot}/{platformName}/{dataReference.GUID.ToLowerInvariant()}.bundle";
                 case PackSeparatelyMode.ByCategory:
                     var packCategory = dataReference.PackCategory;
                     if (string.IsNullOrEmpty(packCategory)) packCategory = "default";
-                    return $"{assetBundleRoot}/{platformName}/{name}_{packCategory}.bundle";
+                    return $"{assetBundleRoot}/{platformName}/{name.ToLowerInvariant()}_{packCategory.ToLower()}.bundle";
             }
 
             return defaultBundleFilename;
