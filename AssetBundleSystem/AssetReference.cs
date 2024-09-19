@@ -310,6 +310,38 @@ namespace FunkAssetBundles
 
             return assetReference;
         }
+
+        public static AssetReference<T> CreateFromGuid(string guid, bool ensureInBundle, AssetBundleData targetBundle = null) // todo: allow specifying bundle 
+        {
+            if (string.IsNullOrEmpty(guid))
+            {
+                return default;
+            }
+
+            var assetPath = AssetDatabase.GUIDToAssetPath(guid);
+            
+            if(string.IsNullOrEmpty(assetPath))
+            {
+                return default; 
+            }
+
+            assetPath = assetPath.ToLowerInvariant();
+
+            var assetReference = new AssetReference<T>()
+            {
+                Name = string.Empty,
+                SubAssetReference = string.Empty,
+                Guid = guid,
+                LocalFileId = 0,
+            };
+
+            if (ensureInBundle)
+            {
+                AssetBundleService.EnsureReferenceInAnyBundle(guid, targetBundle);
+            }
+
+            return assetReference;
+        }
 #endif
 
         public override string ToString()
@@ -360,22 +392,26 @@ namespace FunkAssetBundles
         /// loadingFrom is required for updating moved references. optional otherwise. 
         /// </summary>
         /// <returns></returns>
-        public T EditorLoadAsset(Object loadingFrom, bool logDeleted = true)
+        public T EditorLoadAsset(Object loadingFrom, bool logDeleted = true, bool useAssetCache = true)
         {
             UnityEngine.Profiling.Profiler.BeginSample("EditorLoadAsset");
 
             if (IsValid())
             {
                 var assetCacheKey = $"{Guid}_{LocalFileId}_{SubAssetReference}";
-                if(AssetReferenceCacheAndImporter._editorAssetCache.TryGetValue(assetCacheKey, out Object cacheResult))
+
+                if(useAssetCache)
                 {
-                    if(cacheResult != null)
+                    if(AssetReferenceCacheAndImporter._editorAssetCache.TryGetValue(assetCacheKey, out Object cacheResult))
                     {
-                        return (T) cacheResult;
-                    }
-                    else
-                    {
-                        AssetReferenceCacheAndImporter._editorAssetCache.Remove(assetCacheKey); 
+                        if(cacheResult != null)
+                        {
+                            return (T) cacheResult;
+                        }
+                        else
+                        {
+                            AssetReferenceCacheAndImporter._editorAssetCache.Remove(assetCacheKey); 
+                        }
                     }
                 }
 
@@ -435,13 +471,16 @@ namespace FunkAssetBundles
 
                 UnityEngine.Profiling.Profiler.EndSample();
 
-                if(AssetReferenceCacheAndImporter._editorAssetCache.TryGetValue(assetCacheKey, out var existingAsset))
+                if(useAssetCache)
                 {
-                    AssetReferenceCacheAndImporter._editorAssetCache[assetCacheKey] = asset;
-                }
-                else
-                {
-                    AssetReferenceCacheAndImporter._editorAssetCache.Add(assetCacheKey, asset); 
+                    if(AssetReferenceCacheAndImporter._editorAssetCache.TryGetValue(assetCacheKey, out var existingAsset))
+                    {
+                        AssetReferenceCacheAndImporter._editorAssetCache[assetCacheKey] = asset;
+                    }
+                    else
+                    {
+                        AssetReferenceCacheAndImporter._editorAssetCache.Add(assetCacheKey, asset); 
+                    }
                 }
 
                 return asset;
