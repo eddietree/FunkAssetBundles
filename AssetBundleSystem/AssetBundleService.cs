@@ -225,11 +225,22 @@ namespace FunkAssetBundles
 
         public static void EnsureReferenceInBundle(AssetBundleData bundleData, string guid, bool removeFromOtherBundles = false)
         {
+            if(bundleData == null)
+            {
+                Debug.LogError("EnsureReferenceInBundle() null bundle?");
+                return; 
+            }
+
             var assetData = new AssetBundleReferenceData()
             {
                 GUID = guid,
                 AssetBundleReference = AssetPathLowerCase(AssetDatabase.GUIDToAssetPath(guid)),
             };
+
+            if(bundleData.Assets == null)
+            {
+                bundleData.Assets = new List<AssetBundleReferenceData>(); 
+            }
 
             if (!bundleData.Assets.Contains(assetData))
             {

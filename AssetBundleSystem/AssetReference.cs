@@ -278,9 +278,6 @@ namespace FunkAssetBundles
                 return default;
             }
 
-            var assetPath = AssetDatabase.GetAssetPath(obj);
-            assetPath = assetPath.ToLowerInvariant();
-
             var assetReference = new AssetReference<T>()
             {
                 Name = obj.name,
@@ -318,15 +315,6 @@ namespace FunkAssetBundles
                 return default;
             }
 
-            var assetPath = AssetDatabase.GUIDToAssetPath(guid);
-            
-            if(string.IsNullOrEmpty(assetPath))
-            {
-                return default; 
-            }
-
-            assetPath = assetPath.ToLowerInvariant();
-
             var assetReference = new AssetReference<T>()
             {
                 Name = string.Empty,
@@ -341,6 +329,17 @@ namespace FunkAssetBundles
             }
 
             return assetReference;
+        }
+
+        public static AssetReference<T> CreateFromAssetPath(string assetPath, bool ensureInBundle, AssetBundleData targetBundle = null) // todo: allow specifying bundle 
+        {
+            if (string.IsNullOrEmpty(assetPath))
+            {
+                return default;
+            }
+
+            var guid = AssetDatabase.AssetPathToGUID(assetPath);
+            return CreateFromGuid(guid, ensureInBundle, targetBundle: targetBundle);
         }
 #endif
 
