@@ -271,7 +271,7 @@ namespace FunkAssetBundles
         public long LocalFileId;
 
 #if UNITY_EDITOR
-        public static AssetReference<T> CreateFromObject(Object obj, bool ensureInBundle, AssetBundleData targetBundle = null, bool isSubAsset = false) // todo: allow specifying bundle 
+        public static AssetReference<T> CreateFromObject(Object obj, bool ensureInBundle, AssetBundleData targetBundle = null) // todo: allow specifying bundle 
         {
             if (obj == null)
             {
@@ -295,12 +295,7 @@ namespace FunkAssetBundles
                 }
             }
 
-            if(obj is Sprite)
-            {
-                isSubAsset = true;
-            }
-
-            if (isSubAsset)
+            if (AssetDatabase.IsSubAsset(obj))
             {
                 assetReference.SubAssetReference = obj.name;
             }

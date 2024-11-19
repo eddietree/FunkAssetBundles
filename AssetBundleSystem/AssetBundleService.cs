@@ -2211,6 +2211,16 @@ namespace FunkAssetBundles
 
             return name;
         }
+
+        /// <summary>
+        /// Note: This will not automatically unload bundle data. It just destroys the runtime data associated with this asset. The data may still be cached by the internal asset bundle system. 
+        /// </summary>
+        public void UnloadSingleAsset<T>(T asset, AssetReference<T> assetReferencce) where T : Object
+        {
+            Resources.UnloadAsset(asset);
+            var cacheKey = assetReferencce.GetCacheKey();
+            _assetCache.Remove(cacheKey); 
+        }
     }
 
     public class WaitUntilReadyBatched : CustomYieldInstruction
