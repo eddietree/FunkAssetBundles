@@ -378,6 +378,13 @@ namespace FunkAssetBundles
                 case RuntimePlatform.PS5:
                     platformName = "ps5";
                     break;
+                case RuntimePlatform.IPhonePlayer:
+                    platformName = "iphone";
+                    break;
+                case RuntimePlatform.OSXPlayer:
+                case RuntimePlatform.OSXEditor:
+                    platformName = "osx";
+                    break;
 
                 default:
                     platformName = "other";
@@ -405,7 +412,7 @@ namespace FunkAssetBundles
 
         private void UnloadAllCachedAssets(bool destroyInstancesToo, bool runResourcesUnload)
         {
-            Debug.Log($"UnloadAllCachedAssets({destroyInstancesToo}) - ensuring in-progress async loads are completed");
+            // Debug.Log($"UnloadAllCachedAssets({destroyInstancesToo}) - ensuring in-progress async loads are completed");
 
             var asyncLoading = new List<AssetReference<Object>>();
             foreach (var entry in _assetCache)
@@ -428,14 +435,14 @@ namespace FunkAssetBundles
                 asyncLoading.Add(new AssetReference<Object>() { Guid = request.Guid });
             }
 
-            Debug.Log($"UnloadAllCachedAssets({destroyInstancesToo}) - completeting {asyncLoading.Count} async loads NOW.");
+            // Debug.Log($"UnloadAllCachedAssets({destroyInstancesToo}) - completeting {asyncLoading.Count} async loads NOW.");
 
             foreach (var reference in asyncLoading)
             {
                 LoadSync(reference);
             }
 
-            Debug.Log($"UnloadAllCachedAssets({destroyInstancesToo}) - unloading asset bundles");
+            // Debug.Log($"UnloadAllCachedAssets({destroyInstancesToo}) - unloading asset bundles");
 
             // not necessary because of AssetBundle.UnloadAllAssetBundles
             // foreach (var entry in _bundleCache)
@@ -586,7 +593,7 @@ namespace FunkAssetBundles
             var stopwatch = new System.Diagnostics.Stopwatch();
                 stopwatch.Start();
 
-            Debug.LogFormat("AssetBundleService: preloading {0} asset bundles (not their contents)...", AssetBundleDatas.Count);
+            // Debug.LogFormat("AssetBundleService: preloading {0} asset bundles (not their contents)...", AssetBundleDatas.Count);
 
             _bundleDataLookup.Clear();
 
@@ -635,7 +642,7 @@ namespace FunkAssetBundles
             _initialized = true;
             stopwatch.Stop();
 
-            Debug.Log($"AssetBundleService: finished processing {AssetBundleDatas.Count} asset bundles (completed in {stopwatch.ElapsedMilliseconds}ms) - initialized {_bundleCache.Count} bundles.");
+            // Debug.Log($"AssetBundleService: finished processing {AssetBundleDatas.Count} asset bundles (completed in {stopwatch.ElapsedMilliseconds}ms) - initialized {_bundleCache.Count} bundles.");
 
             if (_prewarmRoutine != null) StopCoroutine(_prewarmRoutine);
             _prewarmRoutine = StartCoroutine(DoHandlePrewarmAssets());

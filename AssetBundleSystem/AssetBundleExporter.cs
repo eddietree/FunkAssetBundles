@@ -620,6 +620,10 @@ namespace FunkAssetBundles
                 // TODO: PSVR
                 case BuildTarget.PS4:
                     return RuntimePlatform.PS4;
+                case BuildTarget.iOS:
+                    return RuntimePlatform.IPhonePlayer;
+                case BuildTarget.StandaloneOSX:
+                    return RuntimePlatform.OSXPlayer;
                 default:
                     Debug.LogError($"platform not configured");
                     return Application.platform;
@@ -634,14 +638,15 @@ namespace FunkAssetBundles
                     return BuildTargetGroup.Android;
                 case BuildTarget.StandaloneWindows:
                 case BuildTarget.StandaloneWindows64:
-                // case BuildTarget.StandaloneLinux: // deprecated 
-                // case BuildTarget.StandaloneLinuxUniversal: // deprecated 
                 case BuildTarget.StandaloneLinux64:
+                case BuildTarget.StandaloneOSX:
                     return BuildTargetGroup.Standalone;
                 case BuildTarget.PS4:
                     return BuildTargetGroup.PS4;
                 case BuildTarget.PS5:
                     return BuildTargetGroup.PS5;
+                case BuildTarget.iOS:
+                    return BuildTargetGroup.iOS;
                 default:
                     return BuildTargetGroup.Unknown;
             }
