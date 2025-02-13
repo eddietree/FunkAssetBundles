@@ -21,7 +21,12 @@ namespace FunkAssetBundles
         // [System.NonSerialized] private Object _referencedObject;
         [System.NonSerialized] private bool _replaceAsked;
 
-        public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
+        public static bool HasSubtypes(System.Type instanceType)
+        {
+            return instanceType == typeof(Sprite) || instanceType == typeof(Mesh);
+        }
+
+        private System.Type GetGenericType()
         {
             // fetch the generic type of the actual property 
             // this generic is used for the object selection (limits type, to avoid user error) 
@@ -51,6 +56,12 @@ namespace FunkAssetBundles
                 genericType = typeGenericArguments[0];
             }
 
+            return genericType; 
+        }
+
+        public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
+        {
+
             var nameProperty = property.FindPropertyRelative("Name");
             var guidProperty = property.FindPropertyRelative("Guid");
             var localFileIdProperty = property.FindPropertyRelative("LocalFileId");
@@ -68,7 +79,7 @@ namespace FunkAssetBundles
             objectFieldPos.y += position.height;
 
             var propertyPosition = objectFieldPos;
-            propertyPosition.y += position.height;
+                propertyPosition.y += position.height;
 
             // draw the name of this property 
             EditorGUI.LabelField(labelPosition, label);
@@ -82,10 +93,12 @@ namespace FunkAssetBundles
                 return;
             }
 
-            var genericTypeHasSubtypes = genericType == typeof(Sprite) || genericType == typeof(Mesh);
+            var genericType = GetGenericType();
+            var genericTypeHasSubtypes = HasSubtypes(genericType);
             if (genericTypeHasSubtypes)
             {
                 objectFieldPos.width /= 2f;
+                propertyPosition.width /= 2f; 
             }
 
             Object _referencedObject = null;
@@ -118,7 +131,7 @@ namespace FunkAssetBundles
                 _referencedObject = EditorGUI.ObjectField(objectFieldPos, _referencedObject, genericType, false);
             }
 
-            if (_referencedObject != null)
+            if (GUI.changed && _referencedObject != null)
             {
                 var path = AssetDatabase.GetAssetPath(_referencedObject);
 
@@ -151,6 +164,12 @@ namespace FunkAssetBundles
                             }
 
                             AssetBundleService.EnsureReferenceInAnyBundle(GUID, defaultBundle);
+                        }
+
+                        // subtypes?
+                        if(genericTypeHasSubtypes)
+                        {
+                            subAssetReferenceProperty.stringValue = _referencedObject.name;
                         }
                     }
 
@@ -208,7 +227,16 @@ namespace FunkAssetBundles
 
             // draw the actual property
             EditorGUI.BeginDisabledGroup(true);
-            EditorGUI.PropertyField(propertyPosition, guidProperty, new GUIContent(), true);
+            {
+                EditorGUI.PropertyField(propertyPosition, guidProperty, new GUIContent(), true);
+                if (genericTypeHasSubtypes)
+                {
+                    var subNameRect = propertyPosition;
+                        subNameRect.x += propertyPosition.width;
+
+                    EditorGUI.PropertyField(subNameRect, subAssetReferenceProperty, new GUIContent(), true);
+                }
+            }
             EditorGUI.EndDisabledGroup();
         }
 
