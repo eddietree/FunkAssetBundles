@@ -106,139 +106,140 @@
                 GUILayout.FlexibleSpace();
 
                 EditorGUILayout.BeginHorizontal("GroupBox");
-                // EditorGUILayout.LabelField($"selected: {targetObject.GetType().Name}"); 
-
-                if(GUILayout.Button(EditorGUIUtility.IconContent("d_Refresh"), GUILayout.Width(32f)))
                 {
-                    TryRefreshBundleGuiCache(editor, force: true); 
-                }
+                    // EditorGUILayout.LabelField($"selected: {targetObject.GetType().Name}"); 
 
-                EditorGUILayout.LabelField("[bundle]", GUILayout.Width(98f));
-
-
-                if(_inNonVisibleBundle)
-                {
-                    EditorGUILayout.LabelField("[in hidden bundle]", GUILayout.Width(128f));
-                }
-                else
-                {
-                    var newBundleIndex = EditorGUILayout.Popup(_assetBundleIndex, _assetBundleDropdownOptions, GUILayout.Width(128f));
-                    if (newBundleIndex != _assetBundleIndex)
+                    if(GUILayout.Button(EditorGUIUtility.IconContent("d_Refresh"), GUILayout.Width(32f)))
                     {
-                        // remove from bundles
-                        if (newBundleIndex == 0)
-                        {
-                            var previousBundle = _assetBundleCache[_assetBundleIndex - 1];
-                            Undo.RecordObject(previousBundle, "removed asset");
-                            previousBundle.EditorRemoveAssetReference(_cachedGuid);
-
-                            if (isMultiTarget)
-                            {
-                                foreach (var target in editor.targets)
-                                {
-                                    AssetDatabase.TryGetGUIDAndLocalFileIdentifier(target, out string targetGuid, out long targetFileId);
-                                    previousBundle.EditorRemoveAssetReference(targetGuid);
-                                }
-                            }
-
-                            EditorUtility.SetDirty(previousBundle);
-
-                            RecacheBundleLookupTables();
-                        }
-
-                        // add to bundle 
-                        else if (_assetBundleIndex == 0)
-                        {
-                            var newBundle = _assetBundleCache[newBundleIndex - 1];
-
-                            if (newBundle.SceneBundle && !targetIsSceneAsset)
-                            {
-                                Debug.LogError($"Tried to add non SceneAsset to a SceneBundle.", newBundle);
-                                EditorUtility.DisplayDialog("STOP.", "Tried to add non SceneAsset to a SceneBundle. This is not allowed.", "oh........");
-                                return;
-                            }
-
-                            else if (!newBundle.SceneBundle && targetIsSceneAsset)
-                            {
-                                Debug.LogError($"Tried to add SceneAsset to a non SceneBundle.", newBundle);
-                                EditorUtility.DisplayDialog("STOP.", "Tried to add SceneAsset to a non SceneBundle. This is not allowed.", "oh........");
-                                return;
-                            }
-
-
-                            Undo.RecordObject(newBundle, "added asset");
-                            newBundle.EditorAddAssetReference(_cachedGuid);
-
-                            if (isMultiTarget)
-                            {
-                                foreach (var target in editor.targets)
-                                {
-                                    AssetDatabase.TryGetGUIDAndLocalFileIdentifier(target, out string targetGuid, out long targetFileId);
-                                    newBundle.EditorAddAssetReference(targetGuid);
-                                }
-                            }
-
-                            EditorUtility.SetDirty(newBundle);
-
-                            RecacheBundleLookupTables();
-                        }
-
-                        // move from one bundle to another 
-                        else
-                        {
-                            var previousBundle = _assetBundleCache[_assetBundleIndex - 1];
-                            var newBundle = _assetBundleCache[newBundleIndex - 1];
-
-                            if (newBundle.SceneBundle && !targetIsSceneAsset)
-                            {
-                                Debug.LogError($"Tried to add non SceneAsset to a SceneBundle.", newBundle);
-                                EditorUtility.DisplayDialog("STOP.", "Tried to add non SceneAsset to a SceneBundle. This is not allowed.", "oh........");
-                                return;
-                            }
-
-                            else if (!newBundle.SceneBundle && targetIsSceneAsset)
-                            {
-                                Debug.LogError($"Tried to add SceneAsset to a non SceneBundle.", newBundle);
-                                EditorUtility.DisplayDialog("STOP.", "Tried to add SceneAsset to a non SceneBundle. This is not allowed.", "oh........");
-                                return;
-                            }
-
-                            Undo.RecordObjects(new Object[] { previousBundle, newBundle }, "moved asset");
-
-                            previousBundle.EditorRemoveAssetReference(_cachedGuid);
-                            newBundle.EditorAddAssetReference(_cachedGuid);
-
-                            if (isMultiTarget)
-                            {
-                                foreach (var target in editor.targets)
-                                {
-                                    AssetDatabase.TryGetGUIDAndLocalFileIdentifier(target, out string targetGuid, out long targetFileId);
-                                    previousBundle.EditorRemoveAssetReference(targetGuid);
-                                    newBundle.EditorAddAssetReference(targetGuid);
-                                }
-
-                            }
-
-                            EditorUtility.SetDirty(previousBundle);
-                            EditorUtility.SetDirty(newBundle); 
-
-                            RecacheBundleLookupTables();
-                        }
-
-                        // update stored index 
-                        _assetBundleIndex = newBundleIndex;
+                        TryRefreshBundleGuiCache(editor, force: true); 
                     }
 
-                    EditorGUI.BeginDisabledGroup(_assetBundleIndex == 0);
-                    if (GUILayout.Button("view", GUILayout.Width(128f)))
-                    {
-                        var bundle = _assetBundleCache[_assetBundleIndex - 1];
-                        Selection.activeObject = bundle;
-                    }
-                    EditorGUI.EndDisabledGroup();
-                    EditorGUILayout.EndHorizontal();
-                }
+                    EditorGUILayout.LabelField("[bundle]", GUILayout.Width(98f));
 
+
+                    if (_inNonVisibleBundle)
+                    {
+                        EditorGUILayout.LabelField("[in hidden bundle]", GUILayout.Width(128f));
+                    }
+                    else
+                    {
+                        var newBundleIndex = EditorGUILayout.Popup(_assetBundleIndex, _assetBundleDropdownOptions, GUILayout.Width(128f));
+                        if (newBundleIndex != _assetBundleIndex)
+                        {
+                            // remove from bundles
+                            if (newBundleIndex == 0)
+                            {
+                                var previousBundle = _assetBundleCache[_assetBundleIndex - 1];
+                                Undo.RecordObject(previousBundle, "removed asset");
+                                previousBundle.EditorRemoveAssetReference(_cachedGuid);
+
+                                if (isMultiTarget)
+                                {
+                                    foreach (var target in editor.targets)
+                                    {
+                                        AssetDatabase.TryGetGUIDAndLocalFileIdentifier(target, out string targetGuid, out long targetFileId);
+                                        previousBundle.EditorRemoveAssetReference(targetGuid);
+                                    }
+                                }
+
+                                EditorUtility.SetDirty(previousBundle);
+
+                                RecacheBundleLookupTables();
+                            }
+
+                            // add to bundle 
+                            else if (_assetBundleIndex == 0)
+                            {
+                                var newBundle = _assetBundleCache[newBundleIndex - 1];
+
+                                if (newBundle.SceneBundle && !targetIsSceneAsset)
+                                {
+                                    Debug.LogError($"Tried to add non SceneAsset to a SceneBundle.", newBundle);
+                                    EditorUtility.DisplayDialog("STOP.", "Tried to add non SceneAsset to a SceneBundle. This is not allowed.", "oh........");
+                                    return;
+                                }
+
+                                else if (!newBundle.SceneBundle && targetIsSceneAsset)
+                                {
+                                    Debug.LogError($"Tried to add SceneAsset to a non SceneBundle.", newBundle);
+                                    EditorUtility.DisplayDialog("STOP.", "Tried to add SceneAsset to a non SceneBundle. This is not allowed.", "oh........");
+                                    return;
+                                }
+
+
+                                Undo.RecordObject(newBundle, "added asset");
+                                newBundle.EditorAddAssetReference(_cachedGuid);
+
+                                if (isMultiTarget)
+                                {
+                                    foreach (var target in editor.targets)
+                                    {
+                                        AssetDatabase.TryGetGUIDAndLocalFileIdentifier(target, out string targetGuid, out long targetFileId);
+                                        newBundle.EditorAddAssetReference(targetGuid);
+                                    }
+                                }
+
+                                EditorUtility.SetDirty(newBundle);
+
+                                RecacheBundleLookupTables();
+                            }
+
+                            // move from one bundle to another 
+                            else
+                            {
+                                var previousBundle = _assetBundleCache[_assetBundleIndex - 1];
+                                var newBundle = _assetBundleCache[newBundleIndex - 1];
+
+                                if (newBundle.SceneBundle && !targetIsSceneAsset)
+                                {
+                                    Debug.LogError($"Tried to add non SceneAsset to a SceneBundle.", newBundle);
+                                    EditorUtility.DisplayDialog("STOP.", "Tried to add non SceneAsset to a SceneBundle. This is not allowed.", "oh........");
+                                    return;
+                                }
+
+                                else if (!newBundle.SceneBundle && targetIsSceneAsset)
+                                {
+                                    Debug.LogError($"Tried to add SceneAsset to a non SceneBundle.", newBundle);
+                                    EditorUtility.DisplayDialog("STOP.", "Tried to add SceneAsset to a non SceneBundle. This is not allowed.", "oh........");
+                                    return;
+                                }
+
+                                Undo.RecordObjects(new Object[] { previousBundle, newBundle }, "moved asset");
+
+                                previousBundle.EditorRemoveAssetReference(_cachedGuid);
+                                newBundle.EditorAddAssetReference(_cachedGuid);
+
+                                if (isMultiTarget)
+                                {
+                                    foreach (var target in editor.targets)
+                                    {
+                                        AssetDatabase.TryGetGUIDAndLocalFileIdentifier(target, out string targetGuid, out long targetFileId);
+                                        previousBundle.EditorRemoveAssetReference(targetGuid);
+                                        newBundle.EditorAddAssetReference(targetGuid);
+                                    }
+
+                                }
+
+                                EditorUtility.SetDirty(previousBundle);
+                                EditorUtility.SetDirty(newBundle);
+
+                                RecacheBundleLookupTables();
+                            }
+
+                            // update stored index 
+                            _assetBundleIndex = newBundleIndex;
+                        }
+
+                        EditorGUI.BeginDisabledGroup(_assetBundleIndex == 0);
+                        if (GUILayout.Button("view", GUILayout.Width(128f)))
+                        {
+                            var bundle = _assetBundleCache[_assetBundleIndex - 1];
+                            Selection.activeObject = bundle;
+                        }
+                        EditorGUI.EndDisabledGroup();
+                    }
+                }
+                EditorGUILayout.EndHorizontal();
             }
             EditorGUILayout.EndHorizontal();
         }
