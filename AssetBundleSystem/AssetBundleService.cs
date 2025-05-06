@@ -1722,6 +1722,24 @@ namespace FunkAssetBundles
             return null;
         }
 
+        public void LoadAsyncCallback<T>(AssetReference<T> reference, bool logErrors = true, bool allowInitializeBundle = true, object context = null, System.Action<T, object> onComplete = null) where T : UnityEngine.Object
+        {
+            StartCoroutine(DoLoadAsyncWithCallback(reference, logErrors, allowInitializeBundle, context, onComplete));
+        }
+
+        private IEnumerator DoLoadAsyncWithCallback<T>(AssetReference<T> reference, bool logErrors, bool allowInitializeBundle, object context, System.Action<T, object> onComplete) where T : UnityEngine.Object
+        {
+            yield return LoadAsync(reference, logErrors: logErrors, allowInitializeBundle: allowInitializeBundle);
+            var result = GetAsyncResult(reference, logErrors: logErrors);
+
+            if(onComplete != null)
+            {
+                onComplete.Invoke(result, context); 
+            }
+
+            yield break; 
+        }
+
         /// <summary>
         /// Queues up an async bundle request. The bundle requested is parsed from the reference string passed in. Returns the handle, which can be yielded. 
         /// </summary>
@@ -1794,10 +1812,10 @@ namespace FunkAssetBundles
                     yield break;
                 }
 
-                if(logErrors)
-                {
-                    Debug.LogWarning($"{reference} was requested, but the async request could not be found?");
-                }
+                // if(logErrors)
+                // {
+                //     Debug.LogWarning($"{reference} was requested, but the async request could not be found?");
+                // }
 
                 yield break;
             }

@@ -22,6 +22,24 @@ namespace FunkAssetBundles
 
             return null;
         }
+        public static GameObject FindSingletonPrefab(string name)
+        {
+            var filter = name;
+            var assetGuids = UnityEditor.AssetDatabase.FindAssets(filter);
+
+            foreach (var assetGuid in assetGuids)
+            {
+                var assetPath = UnityEditor.AssetDatabase.GUIDToAssetPath(assetGuid);
+                var asset = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+
+                if (asset != null)
+                {
+                    return asset;
+                }
+            }
+
+            return null;
+        }
 
         public static T FindSingletonAsset<T>(string name) where T : MonoBehaviour
         {
@@ -63,34 +81,25 @@ namespace FunkAssetBundles
         public static void LoadAssetsOfType<T>(List<T> results, params System.Type[] validTypes)
             where T : UnityEngine.Object
         {
-            var filter = string.Format("t:{0}", typeof(T).Name);
-            var assetGuids = UnityEditor.AssetDatabase.FindAssets(filter);
-
-            foreach (var assetGuid in assetGuids)
+            foreach(var validType in validTypes)
             {
-                var assetPath = UnityEditor.AssetDatabase.GUIDToAssetPath(assetGuid);
-                var asset = UnityEditor.AssetDatabase.LoadAssetAtPath<T>(assetPath);
+                var filter = string.Format("t:{0}", validType.Name);
+                var assetGuids = UnityEditor.AssetDatabase.FindAssets(filter);
 
-                var validType = false;
-                var assetType = asset.GetType();
-
-                foreach (var checkType in validTypes)
+                foreach (var assetGuid in assetGuids)
                 {
-                    if (checkType == assetType || assetType.IsSubclassOf(checkType))
+                    var assetPath = UnityEditor.AssetDatabase.GUIDToAssetPath(assetGuid);
+                    var asset = UnityEditor.AssetDatabase.LoadAssetAtPath<T>(assetPath);
+
+                    if(asset == null)
                     {
-                        validType = true;
-                        break;
+                        continue;
                     }
-                }
 
-                if (!validType)
-                {
-                    continue;
-                }
-
-                if (!results.Contains(asset))
-                {
-                    results.Add(asset);
+                    if (!results.Contains(asset))
+                    {
+                        results.Add(asset);
+                    }
                 }
             }
         }

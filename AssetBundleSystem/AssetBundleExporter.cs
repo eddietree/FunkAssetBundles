@@ -387,6 +387,25 @@ namespace FunkAssetBundles
             }
         }
 #else
+            // todo: we should use this method, so we can specify load order (which implicitly specifies dependency order) 
+            // var parameters = new BuildAssetBundlesParameters()
+            // {
+            //     outputPath = buildRoot,
+            //     targetPlatform = platform,
+            //     options = bundleOptions,
+            // 
+            //      bundleDefinitions = new AssetBundleBuild[]
+            //      {
+            //           new AssetBundleBuild()
+            //           {
+            //                
+            //           }
+            //      },
+            //      
+            // };
+            // 
+            // BuildPipeline.BuildAssetBundles()
+
             var manifest = BuildPipeline.BuildAssetBundles(buildRoot, bundleOptions, platform);
 
             if (manifest != null)
@@ -613,17 +632,18 @@ namespace FunkAssetBundles
                 case BuildTarget.StandaloneWindows:
                 case BuildTarget.StandaloneWindows64:
                     return RuntimePlatform.WindowsPlayer;
-                // case BuildTarget.StandaloneLinux: // deprecated 
-                // case BuildTarget.StandaloneLinuxUniversal: // deprecated 
                 case BuildTarget.StandaloneLinux64:
                     return RuntimePlatform.LinuxPlayer;
-                // TODO: PSVR
                 case BuildTarget.PS4:
                     return RuntimePlatform.PS4;
                 case BuildTarget.iOS:
                     return RuntimePlatform.IPhonePlayer;
                 case BuildTarget.StandaloneOSX:
                     return RuntimePlatform.OSXPlayer;
+                case BuildTarget.Switch:
+                    return RuntimePlatform.Switch;
+                case BuildTarget.XboxOne:
+                    return RuntimePlatform.XboxOne;
                 default:
                     Debug.LogError($"platform not configured");
                     return Application.platform;
@@ -647,6 +667,10 @@ namespace FunkAssetBundles
                     return BuildTargetGroup.PS5;
                 case BuildTarget.iOS:
                     return BuildTargetGroup.iOS;
+                case BuildTarget.Switch:
+                    return BuildTargetGroup.Switch;
+                case BuildTarget.XboxOne:
+                    return BuildTargetGroup.XboxOne;
                 default:
                     return BuildTargetGroup.Unknown;
             }
@@ -891,7 +915,14 @@ namespace FunkAssetBundles
             Debug.LogFormat("AssetBundleExporter: copy folder {0} -> {1}", srcFolder, dstFolder);
 
             if (Directory.Exists(dstFolder) == false)
+            {
                 Directory.CreateDirectory(dstFolder);
+            }
+
+            if(!Directory.Exists(srcFolder))
+            {
+                return; 
+            }
 
             var files = Directory.GetFiles(srcFolder);
 
