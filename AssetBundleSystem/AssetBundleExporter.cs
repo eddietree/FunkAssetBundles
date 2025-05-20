@@ -189,8 +189,6 @@ namespace FunkAssetBundles
                     bundleOptions |= BuildAssetBundleOptions.UncompressedAssetBundle;       //PS5: bundles should be uncompressed and then compressed via the PS5 build process with kraken compression instead (decreases load times)
                     break;
                 case BuildTarget.Switch:
-                    bundleOptions |= BuildAssetBundleOptions.UncompressedAssetBundle;       //Nintendo Switch: bundles uncompressed, ROM compressed, see: <nintendo-sdk>/UnityForNintendoSwitch/Documents/contents-en/Pages/Page_261423542.html
-                    break;
                 default:
                     bundleOptions |= BuildAssetBundleOptions.ChunkBasedCompression;         // important, ensures only assets we care about are pulled into memory + for full loads: disabling this explodes loading time (ex from 4s to 20s)
                     break; 
