@@ -531,6 +531,7 @@ namespace FunkAssetBundles
             }
 
             // build 
+#if UNITY_2022_3_OR_NEWER
             var manifest = BuildPipeline.BuildAssetBundles(new BuildAssetBundlesParameters()
             {
                 outputPath = buildRoot,
@@ -538,6 +539,9 @@ namespace FunkAssetBundles
                 targetPlatform = platform,
                 bundleDefinitions = bundleBuilds.ToArray(),
             });
+#else
+            var manifest = BuildPipeline.BuildAssetBundles(buildRoot, bundleBuilds.ToArray(), bundleOptions, platform);
+#endif
 
             // parse 
             if (manifest != null)
@@ -954,5 +958,5 @@ namespace FunkAssetBundles
             }
         }
 #endif
-    }
+        }
 }
