@@ -273,7 +273,8 @@ namespace FunkAssetBundles
     /// Use either this struct or its string to load objects from asset bundles via Services.assetBundles.LoadAsync(); 
     /// </summary>
     [System.Serializable]
-    public struct AssetReference<T> where T : Object
+    public struct AssetReference<T> : System.IEquatable<AssetReference<T>>
+        where T : Object
     {
         // to fix serialization bug 
         // public string Reference;
@@ -543,12 +544,17 @@ namespace FunkAssetBundles
                 return true;
             }
 
-            return this.Guid == otherRef.Guid && this.LocalFileId == otherRef.LocalFileId;
+            return this.Equals(otherRef);
         }
 
         public override int GetHashCode()
         {
-            return ToString().GetHashCode();
+            return System.HashCode.Combine(Guid, SubAssetReference, LocalFileId);
+        }
+
+        public bool Equals(AssetReference<T> other)
+        {
+            return Guid.Equals(other.Guid, System.StringComparison.Ordinal) && SubAssetReference.Equals(other.SubAssetReference, System.StringComparison.Ordinal) && LocalFileId == other.LocalFileId;
         }
 
         // 🔪 AssetReference<Object> cant be cast to AssetReference<GameObject> 🔪
