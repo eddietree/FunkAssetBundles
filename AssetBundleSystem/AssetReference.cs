@@ -248,13 +248,91 @@ namespace FunkAssetBundles
 
     public class AssetReferenceCacheAndImporter : AssetPostprocessor
     {
-        public static Dictionary<string, Object> _editorAssetCache = new Dictionary<string, Object>();
+        private static Dictionary<string, Object> _editorAssetCache = new Dictionary<string, Object>();
+        private static Dictionary<string, List<string>> _cachedAssetPaths = new Dictionary<string, List<string>>();
 
         private static void OnPostprocessAllAssets(string[] importedAssets, string[] deletedAssets, string[] movedAssets, string[] movedFromAssetPaths)
         {
-            // we could probably be more clever here: only remove keys which were affected
-            // for now though, just clear everything when any asset is imported
-            _editorAssetCache.Clear(); 
+            foreach(var assetPath in importedAssets) TryRemoveCacheEntry(assetPath);
+            foreach(var assetPath in deletedAssets) TryRemoveCacheEntry(assetPath);
+            foreach(var assetPath in movedAssets) TryRemoveCacheEntry(assetPath);
+            foreach(var assetPath in movedFromAssetPaths) TryRemoveCacheEntry(assetPath);
+
+            // note: don't do this anymore 
+            // // we could probably be more clever here: only remove keys which were affected
+            // // for now though, just clear everything when any asset is imported
+            // _editorAssetCache.Clear(); 
+        }
+
+        private static void TryRemoveCacheEntry(string assetPath)
+        {
+            if(_cachedAssetPaths.TryGetValue(assetPath, out var assetCacheKeyList))
+            {
+                foreach(var assetCacheKey in assetCacheKeyList)
+                {
+                    _editorAssetCache.Remove(assetCacheKey);
+                }
+
+                _cachedAssetPaths.Remove(assetPath); 
+            }
+        }
+
+        public static void AddToCache(string assetCacheKey, string guid, Object asset)
+        {
+            if (_editorAssetCache.TryGetValue(assetCacheKey, out var existingAsset))
+            {
+                _editorAssetCache[assetCacheKey] = asset;
+            }
+            else
+            {
+                _editorAssetCache.Add(assetCacheKey, asset);
+
+                var assetPathRaw = AssetDatabase.GUIDToAssetPath(guid);
+
+                if (!string.IsNullOrEmpty(assetPathRaw))
+                {
+                    if(_cachedAssetPaths.TryGetValue(assetPathRaw, out var assetCacheKeyList))
+                    {
+                        assetCacheKeyList.Add(assetCacheKey); 
+                    }
+                    else
+                    {
+                        _cachedAssetPaths.Add(assetPathRaw, new List<string>() { assetCacheKey });
+                    }
+                }
+            }
+        }
+
+        public static void RemoveFromCache(string assetCacheKey, string guid)
+        {
+            AssetReferenceCacheAndImporter._editorAssetCache.Remove(assetCacheKey);
+
+            var assetPathRaw = AssetDatabase.GUIDToAssetPath(guid);
+
+            if (!string.IsNullOrEmpty(assetPathRaw))
+            {
+                if(AssetReferenceCacheAndImporter._cachedAssetPaths.TryGetValue(assetPathRaw, out var assetCacheKeyList))
+                {
+                    assetCacheKeyList.Remove(assetCacheKey);
+
+                    if(assetCacheKeyList.Count == 0)
+                    {
+                        AssetReferenceCacheAndImporter._cachedAssetPaths.Remove(assetPathRaw);
+                    }
+                }
+            }
+        }
+
+        public static bool TryGetFromAssetCache<T>(string assetCacheKey, out T asset) where T : Object
+        {
+            if(_editorAssetCache.TryGetValue(assetCacheKey, out var assetObject))
+            {
+                asset = (T)assetObject;
+                return true;
+            }
+
+            asset = null; 
+            return false; 
         }
     }
 #endif
@@ -410,6 +488,11 @@ namespace FunkAssetBundles
 
 #if UNITY_EDITOR
 
+        public string GetAssetCacheKey()
+        {
+            return $"{Guid}_{LocalFileId}_{SubAssetReference}";
+        }
+
         /// <summary>
         /// Only use in Editor scripts. 
         /// loadingFrom is required for updating moved references. optional otherwise. 
@@ -421,19 +504,20 @@ namespace FunkAssetBundles
 
             if (IsValid())
             {
-                var assetCacheKey = $"{Guid}_{LocalFileId}_{SubAssetReference}";
+                var assetCacheKey = GetAssetCacheKey();
 
                 if(useAssetCache)
                 {
-                    if(AssetReferenceCacheAndImporter._editorAssetCache.TryGetValue(assetCacheKey, out Object cacheResult))
+                    if(AssetReferenceCacheAndImporter.TryGetFromAssetCache(assetCacheKey, out T cacheResult))
                     {
                         if(cacheResult != null)
                         {
-                            return (T) cacheResult;
+                            UnityEngine.Profiling.Profiler.EndSample(); 
+                            return cacheResult;
                         }
                         else
                         {
-                            AssetReferenceCacheAndImporter._editorAssetCache.Remove(assetCacheKey); 
+                            AssetReferenceCacheAndImporter.RemoveFromCache(assetCacheKey, Guid); 
                         }
                     }
                 }
@@ -492,20 +576,12 @@ namespace FunkAssetBundles
                     }
                 }
 
-                UnityEngine.Profiling.Profiler.EndSample();
-
                 if(useAssetCache)
                 {
-                    if(AssetReferenceCacheAndImporter._editorAssetCache.TryGetValue(assetCacheKey, out var existingAsset))
-                    {
-                        AssetReferenceCacheAndImporter._editorAssetCache[assetCacheKey] = asset;
-                    }
-                    else
-                    {
-                        AssetReferenceCacheAndImporter._editorAssetCache.Add(assetCacheKey, asset); 
-                    }
+                    AssetReferenceCacheAndImporter.AddToCache(assetCacheKey, Guid, asset); 
                 }
 
+                UnityEngine.Profiling.Profiler.EndSample();
                 return asset;
             }
             else
