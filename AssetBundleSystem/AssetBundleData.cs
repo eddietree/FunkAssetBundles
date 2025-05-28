@@ -20,6 +20,9 @@ namespace FunkAssetBundles
         [Tooltip("In Editor, loads from this bundle will NOT use AssetDatabase, and instead will only use real asset bundles. Only enable this if you understand the implications.")] public bool ForceLoadInEditor;
         [Tooltip("When the 'isDedicatedServer' is set in the AssetBundleExporter API, this bundle will be skipped. Only enable this if you understand the implications.")] public bool DoNotBuildForDedicatedServer;
 
+        [Tooltip("Lower value will result in this bundle being built before other bundles (just puts it in the start of the build array). Otherwise, the order should be considered random.")]
+        public int buildOrder = 0; 
+
         public PackSeparatelyMode PackMode = PackSeparatelyMode.EachFile;
         public List<string> PackCategories = new List<string>()
         {
@@ -150,7 +153,7 @@ namespace FunkAssetBundles
             EditorUtility.SetDirty(this);
         }
 
-        public void EditorRemoveNullAssetReferences()
+        public void EditorRemoveNullAssetReferences(bool checkAssetExists = false)
         {
             Undo.RecordObject(this, "removed null references");
 
@@ -162,13 +165,24 @@ namespace FunkAssetBundles
                 if (string.IsNullOrEmpty(assetPath))
                 {
                     Assets.RemoveAt(i);
+                    continue;
+                }
+
+                if(checkAssetExists)
+                {
+                    var mainAsset = AssetDatabase.LoadMainAssetAtPath(assetPath);
+                    if(mainAsset == null)
+                    {
+                        Assets.RemoveAt(i);
+                        continue;
+                    }
                 }
             }
 
             EditorUtility.SetDirty(this);
         }
 
-        public void EditorAddAssetReference(string guid)
+        public bool EditorAddAssetReference(string guid)
         {
             var bundleReference = AssetBundleService.AssetPathLowerCase(AssetDatabase.GUIDToAssetPath(guid));
             var data = new AssetBundleReferenceData()
@@ -181,14 +195,15 @@ namespace FunkAssetBundles
             if (exists)
             {
                 // Debug.LogWarning($"[SKIPPED] {bundleReference} [{guid}] is already in this bundle!");
-                return;
+                return false;
             }
 
             Assets.Add(data);
 
-            Debug.Log($"[ADDED] {bundleReference} [{guid}] to bundle {name}", this);
+            // Debug.Log($"[ADDED] {bundleReference} [{guid}] to bundle {name}", this);
 
             EditorUtility.SetDirty(this);
+            return true; 
         }
 
         public void EditorRemoveAssetReference(string guid)

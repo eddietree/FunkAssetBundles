@@ -120,7 +120,7 @@ namespace FunkAssetBundles
 
             var buildTarget = EditorUserBuildSettings.activeBuildTarget;
             var isServer = GetIsPlayerServer();
-
+            
             Debug.Log($"Exporting bundles. Current build target: {buildTarget}");
 
             // active build target 
@@ -217,6 +217,13 @@ namespace FunkAssetBundles
             var assetBundleService = AssetDatabaseE.FindSingletonAsset<AssetBundleService>("PfbAssetBundleService");
             var assetBundleDatas = assetBundleService.AssetBundleDatas;
 
+            var subTarget = (int) StandaloneBuildSubtarget.Player;
+
+            if(isDedicatedServer)
+            {
+                subTarget = (int) StandaloneBuildSubtarget.Server;
+            }
+
             var buildRoot = GetBundlesBuildFolder() + $"/{runtimeName}";
             if (Directory.Exists(buildRoot) == false)
             {
@@ -239,7 +246,8 @@ namespace FunkAssetBundles
             }
 
             // build 
-            var any_no_dependency_bundles_built = false;
+            // var any_no_dependency_bundles_built = false;
+
 
             // scan and build "NoDependency" bundles one at a time (clears tags on all bundles between each step)
             foreach (var assetBundleData in assetBundleDatas)
@@ -264,15 +272,24 @@ namespace FunkAssetBundles
                     continue;
                 }
 
-                TagAssetsForAssetBundles(platform, assetBundleData, isDedicatedServer);
-                InternalBuildTaggedBundles(buildRoot, bundleOptions, platform);
+                // new way (explicit list and build from list) 
+                var noDependencyBundleDefinitions = new AssetBundleBuildDefinitions();
+                BuildBundleDefinitionsList(platform, assetBundleData, isDedicatedServer, noDependencyBundleDefinitions);
+                InternalBuildBundlesExplicit(buildRoot, bundleOptions, platform, subTarget, noDependencyBundleDefinitions);
+
+                // old way (tag and build) 
+                // TagAssetsForAssetBundles(platform, assetBundleData, isDedicatedServer);
+                // InternalBuildTaggedBundles(buildRoot, bundleOptions, platform);
 
                 // prepare assets for export 
-                Debug.LogFormat("AssetBundleExporter.BuildBundlesForTarget: removing asset tags...");
-                RemoveAssetBundleTagsFromAssets();
+                // Debug.LogFormat("AssetBundleExporter.BuildBundlesForTarget: removing asset tags...");
+                // RemoveAssetBundleTagsFromAssets();
 
-                any_no_dependency_bundles_built = true; 
+                // any_no_dependency_bundles_built = true; 
             }
+
+
+            var bundleDefinitionData = new AssetBundleBuildDefinitions();
 
             // scan and tag all other bundles, then build once at the end 
             var foundBundlesWithDependencies = false;
@@ -319,7 +336,12 @@ namespace FunkAssetBundles
                     }
                 }
 
-                TagAssetsForAssetBundles(platform, assetBundleData, isDedicatedServer);
+                // new way, handle list manually 
+                BuildBundleDefinitionsList(platform, assetBundleData, isDedicatedServer, bundleDefinitionData);
+
+                // old way, tag 
+                // TagAssetsForAssetBundles(platform, assetBundleData, isDedicatedServer);
+
                 foundBundlesWithDependencies = true;
             }
 
@@ -327,25 +349,66 @@ namespace FunkAssetBundles
             {
                 if (onlyRebuildSpecificBundles != null)
                 {
-                    InternalBuildSpecificBundles(buildRoot, bundleOptions, platform, onlyRebuildSpecificBundles, onlyRebuildSpecificCategories, isDedicatedServer);
+                    InternalBuildSpecificBundles(buildRoot, bundleOptions, platform, subTarget, onlyRebuildSpecificBundles, onlyRebuildSpecificCategories, isDedicatedServer);
                 }
                 else
                 {
-                    InternalBuildTaggedBundles(buildRoot, bundleOptions, platform);
+                    // new way, build from explicit list 
+                    InternalBuildBundlesExplicit(buildRoot, bundleOptions, platform, subTarget, bundleDefinitionData);
+
+                    // old way, build tagged bundles 
+                    // InternalBuildTaggedBundles(buildRoot, bundleOptions, platform);
                 }
             }
 
-            var remove_tags = false;
+            // old way, needed to remove tags 
+            // var remove_tags = false;
+            // 
+            // if(any_no_dependency_bundles_built || !IF_NO_ZERO_DEPENDENCY_BUNDLES_DONT_REMOVE_BUNDLE_TAGS)
+            // {
+            //     remove_tags = true; 
+            // }
 
-            if(any_no_dependency_bundles_built || !IF_NO_ZERO_DEPENDENCY_BUNDLES_DONT_REMOVE_BUNDLE_TAGS)
+            // if(remove_tags)
+            // {
+            //     RemoveAssetBundleTagsFromAssets();
+            // }
+        }
+
+
+
+        private static void InternalBuildBundlesExplicit(string buildRoot, BuildAssetBundleOptions bundleOptions, BuildTarget platform, int subtarget, AssetBundleBuildDefinitions bundleDefinitions)
+        {
+            var stopwatch = new System.Diagnostics.Stopwatch();
+                stopwatch.Start();
+
+#if UNITY_2022_3_OR_NEWER
+            var manifest = BuildPipeline.BuildAssetBundles(new BuildAssetBundlesParameters()
             {
-                remove_tags = true; 
+                options = bundleOptions,
+                outputPath = buildRoot,
+                targetPlatform = platform,
+                bundleDefinitions = bundleDefinitions.GenerateBundleBuildArray(),
+                subtarget = subtarget,
+            });
+#else
+            var manifest = BuildPipeline.BuildAssetBundles(buildRoot, bundleDefinitions.GenerateBundleBuildArray(), bundleOptions, platform); 
+#endif
+
+            if (manifest != null)
+            {
+                foreach (var name in manifest.GetAllAssetBundles())
+                {
+                    Debug.LogFormat("AssetBundleExporter.ExportBundle: bundle hash: {0} = {1}", name, manifest.GetAssetBundleHash(name));
+                }
+            }
+            else
+            {
+                Debug.LogFormat("AssetBundleExporter.ExportBundle: manifest was null");
             }
 
-            if(remove_tags)
-            {
-                RemoveAssetBundleTagsFromAssets();
-            }
+            stopwatch.Stop();
+            Debug.LogFormat("AssetBundleExporter.ExportBundle: completed in {0} seconds", stopwatch.Elapsed.Seconds);
         }
 
         private static void InternalBuildTaggedBundles(string buildRoot, BuildAssetBundleOptions bundleOptions, BuildTarget platform, bool dryRun = false)
@@ -430,7 +493,7 @@ namespace FunkAssetBundles
             Debug.LogFormat("AssetBundleExporter.ExportBundle: completed in {0} seconds", stopwatch.Elapsed.Seconds);
         }
 
-        private static void InternalBuildSpecificBundles(string buildRoot, BuildAssetBundleOptions bundleOptions, BuildTarget platform, AssetBundleData[] bundleDatas, string[] validPackCategories, bool isDedicatedServer)
+        private static void InternalBuildSpecificBundles(string buildRoot, BuildAssetBundleOptions bundleOptions, BuildTarget platform, int subTarget, AssetBundleData[] bundleDatas, string[] validPackCategories, bool isDedicatedServer)
         {
             var stopwatch = new System.Diagnostics.Stopwatch();
                 stopwatch.Start();
@@ -538,6 +601,7 @@ namespace FunkAssetBundles
                 options = bundleOptions,
                 targetPlatform = platform,
                 bundleDefinitions = bundleBuilds.ToArray(),
+                subtarget = subTarget,
             });
 #else
             var manifest = BuildPipeline.BuildAssetBundles(buildRoot, bundleBuilds.ToArray(), bundleOptions, platform);
@@ -829,6 +893,116 @@ namespace FunkAssetBundles
                 {
                     bundle.EditorRemoveOurAssetsFromOtherBundles();
                 }
+            }
+        }
+
+        [System.Serializable]
+        private class AssetBundleBuildDefinitions
+        {
+            public Dictionary<string, AssetBundleBuildData> bundleDefinitions = new Dictionary<string, AssetBundleBuildData>();
+
+            [System.Serializable]
+            public class AssetBundleBuildData
+            {
+                public string assetBundleName;
+                public string assetBundleVariant;
+                public List<string> assetNames = new List<string>();
+                public List<string> addressableNames = new List<string>();
+                public int buildOrder;
+            }
+
+            public void AddAsset(string bundleName, string assetPath, int buildOrder)
+            {
+                if (bundleDefinitions.TryGetValue(bundleName, out var bundleData))
+                {
+                    bundleData.assetNames.Add(assetPath);
+                    bundleData.addressableNames.Add(assetPath);
+                }
+                else
+                {
+                    bundleDefinitions.Add(bundleName, new AssetBundleBuildData()
+                    {
+                        assetBundleName = bundleName,
+                        assetBundleVariant = string.Empty,
+                        assetNames = new List<string>()
+                        {
+                            assetPath,
+                        },
+                        addressableNames = new List<string>()
+                        {
+                            assetPath,
+                        },
+                        buildOrder = buildOrder,
+                    });
+                }
+            }
+
+            public AssetBundleBuild[] GenerateBundleBuildArray()
+            {
+                var buildDataList = new List<AssetBundleBuildData>();
+                
+                foreach (var entry in bundleDefinitions)
+                {
+                    var data = entry.Value;
+                    buildDataList.Add(data);
+                }
+
+                var orderedList = buildDataList.OrderBy(buildData => buildData.buildOrder).ThenBy(data => data.assetBundleName);
+                var results = new List<AssetBundleBuild>(buildDataList.Count);
+
+                foreach (var entry in orderedList)
+                {
+                    results.Add(new AssetBundleBuild()
+                    {
+                        assetBundleName = entry.assetBundleName,
+                        assetBundleVariant = entry.assetBundleVariant,
+                        assetNames = entry.assetNames.ToArray(),
+                        addressableNames = entry.addressableNames.ToArray(),
+                    });
+                }
+
+                return results.ToArray(); 
+            }
+        }
+
+        private static void BuildBundleDefinitionsList(BuildTarget platform, AssetBundleData assetBundleData, bool isDedicatedServer, AssetBundleBuildDefinitions definitionData)
+        {
+            try
+            {
+                var bundleName = $"{assetBundleData.name}.bundle";
+
+                // find all the paths 
+                var count = 0;
+                foreach (var assetData in assetBundleData.Assets)
+                {
+                    var assetBundleSetName = bundleName;
+
+                    if (assetBundleData.PackSeparately)
+                    {
+                        assetBundleSetName = $"{assetData.GUID}.bundle";
+
+                        switch (assetBundleData.PackMode)
+                        {
+                            case AssetBundleData.PackSeparatelyMode.EachFile:
+                                assetBundleSetName = $"{assetData.GUID}.bundle";
+                                break;
+                            case AssetBundleData.PackSeparatelyMode.ByCategory:
+                                var packCategory = assetData.PackCategory;
+                                if (string.IsNullOrEmpty(packCategory)) packCategory = "default";
+                                assetBundleSetName = $"{assetBundleData.name}_{packCategory}.bundle";
+                                break;
+                        }
+                    }
+
+                    var assetPath = AssetDatabase.GUIDToAssetPath(assetData.GUID);
+                    definitionData.AddAsset(assetBundleSetName, assetPath, assetBundleData.buildOrder);
+                }
+
+                Debug.Log($"AssetBundleExporter.ExportBundle: found {count} assets...");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogException(e);
             }
         }
 

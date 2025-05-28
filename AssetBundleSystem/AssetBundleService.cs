@@ -64,8 +64,8 @@ namespace FunkAssetBundles
         }
 
         public const bool PRELOAD_BUNDLES_IN_MEMORY = false;
-        public const bool ASYNC_INITIALIZE_FROM_LOADS = true;
         public const bool UNLOAD_BUNDLES_ON_INITIALIZE = true;
+        public const bool ASYNC_INITIALIZE_FROM_LOADS = false; // deadlock issues? 
 
 #if UNITY_EDITOR
         // when true, the editor will load things from AssetDatabase instead of from asset bundles. 
@@ -1867,6 +1867,64 @@ namespace FunkAssetBundles
             yield break; 
         }
 
+        public bool GetBundleInitializedForReference<T>(AssetReference<T> reference, bool logErrors = true) where T : UnityEngine.Object
+        {
+            var assetBundleData = GetAssetBundleContainer(reference, logErrors: logErrors);
+            if (assetBundleData != null)
+            {
+                if (assetBundleData.PackSeparately)
+                {
+                    return _bundleCache.TryGetValue(BuildPackedAssetBundleName(assetBundleData, reference.Guid), out _);
+                }
+                else
+                {
+                    return _bundleCache.TryGetValue(assetBundleData.name, out _);
+                }
+            }
+
+            return false; 
+        }
+
+        public IEnumerator InitializeBundleForReferenceIfNecessaryAsync<T>(AssetReference<T> reference, bool logErrors = true) where T : UnityEngine.Object
+        {
+            var assetBundleData = GetAssetBundleContainer(reference, logErrors: logErrors);
+            if (assetBundleData == null)
+            {
+                if (logErrors)
+                {
+                    Debug.LogError($"AssetBundleData not found for: {reference.Name} ({reference}). loaded bundles count: {_bundleCache.Count}");
+                }
+
+                yield break;
+            }
+
+            bool found;
+            if (assetBundleData.PackSeparately)
+            {
+                found = _bundleCache.TryGetValue(BuildPackedAssetBundleName(assetBundleData, reference.Guid), out _);
+            }
+            else
+            {
+                found = _bundleCache.TryGetValue(assetBundleData.name, out _);
+            }
+
+            if (!found)
+            {
+                _assetCache.Add(reference.GetCacheKey(), new AssetCache()
+                {
+                    Guid = reference.Guid,
+                    SubAssetReference = reference.SubAssetReference,
+                });
+
+                yield return InitializeSingleBundle(assetBundleData, specificAssetGuid: reference.Guid);
+
+                if (!GetIsInitialized())
+                {
+                    yield break;
+                }
+            }
+        }
+
         /// <summary>
         /// Queues up an async bundle request. The bundle requested is parsed from the reference string passed in. Returns the handle, which can be yielded. 
         /// </summary>
@@ -1947,45 +2005,9 @@ namespace FunkAssetBundles
                 yield break;
             }
 
-            // async loading this causes issues when trying to load the same asset multiple times 
             if(allowInitializeBundle && ASYNC_INITIALIZE_FROM_LOADS)
             {
-                var assetBundleData = GetAssetBundleContainer(reference, logErrors: logErrors);
-                if (assetBundleData == null)
-                {
-                    if (logErrors)
-                    {
-                        Debug.LogError($"AssetBundleData not found for: {reference.Name} ({reference}). loaded bundles count: {_bundleCache.Count}");
-                    }
-
-                    yield break;
-                }
-
-                bool found;
-                if (assetBundleData.PackSeparately)
-                {
-                    found = _bundleCache.TryGetValue(BuildPackedAssetBundleName(assetBundleData, reference.Guid), out _);
-                }
-                else
-                {
-                    found = _bundleCache.TryGetValue(assetBundleData.name, out _);
-                }
-
-                if (!found)
-                {
-                    _assetCache.Add(reference.GetCacheKey(), new AssetCache()
-                    {
-                        Guid = reference.Guid,
-                        SubAssetReference = reference.SubAssetReference,
-                    });
-
-                    yield return InitializeSingleBundle(assetBundleData, specificAssetGuid: reference.Guid);
-
-                    if(!GetIsInitialized())
-                    {
-                        yield break; 
-                    }
-                }
+                yield return InitializeBundleForReferenceIfNecessaryAsync(reference, logErrors: logErrors);
             }
 
             var assetBundle = TryGetAssetBundle(reference, allowInitializeBundle: allowInitializeBundle, logErrors: logErrors);

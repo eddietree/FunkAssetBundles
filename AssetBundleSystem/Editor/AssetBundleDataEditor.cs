@@ -35,6 +35,7 @@ namespace FunkAssetBundles
         private SerializedProperty DoNotBuildForDedicatedServer;
         private SerializedProperty PackMode;
         private SerializedProperty PackCategories;
+        private SerializedProperty buildOrder;
 
         private static bool _editorFoldout_browse_tools;
 
@@ -50,6 +51,7 @@ namespace FunkAssetBundles
             DoNotBuildForDedicatedServer = serializedObject.FindProperty("DoNotBuildForDedicatedServer");
             PackMode = serializedObject.FindProperty("PackMode");
             PackCategories = serializedObject.FindProperty("PackCategories");
+            buildOrder = serializedObject.FindProperty("buildOrder");
         }
 
         // dependency stuff 
@@ -578,6 +580,7 @@ namespace FunkAssetBundles
                     EditorGUILayout.PropertyField(HideInLists);
                     EditorGUILayout.PropertyField(ForceLoadInEditor);
                     EditorGUILayout.PropertyField(DoNotBuildForDedicatedServer);
+                    EditorGUILayout.PropertyField(buildOrder);
 
                     EditorGUILayout.PropertyField(PackSeparately);
                     if(instance.PackSeparately)
@@ -588,7 +591,7 @@ namespace FunkAssetBundles
                         {
                             EditorGUILayout.PropertyField(PackCategories);
 
-                            if(instance.PackCategories.Count < 1 || instance.PackCategories[0] != "default")
+                            if (instance.PackCategories.Count < 1 || instance.PackCategories[0] != "default")
                             {
                                 if(instance.PackCategories.Count < 1)
                                 {
@@ -828,7 +831,7 @@ namespace FunkAssetBundles
 
                         if (GUILayout.Button("DELETE NULL References") && EditorUtility.DisplayDialog("delete nulls?", "are you sure????", "yes i am kinda sure", "no no no no no"))
                         {
-                            instance.EditorRemoveNullAssetReferences();
+                            instance.EditorRemoveNullAssetReferences(checkAssetExists: true);
                         }
 
                         if (GUILayout.Button("Delete duplicate refs"))
