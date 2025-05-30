@@ -2466,6 +2466,40 @@ namespace FunkAssetBundles
             var cacheKey = assetReferencce.GetCacheKey();
             _assetCache.Remove(cacheKey); 
         }
+
+        /// <summary>
+        /// Returns the full file path for the bundles manifest file for the current runtime platform. 
+        /// </summary>
+        /// <returns></returns>
+        public static string GetBundlePlatformManifestFileLocation()
+        {
+            var platformName = GetCurrentRuntimePlatformName();
+            return System.IO.Path.Combine(Application.streamingAssetsPath, "bundles", platformName, $"{platformName}.manifest");
+        }
+
+        /// <summary>
+        /// Returns the full file path for the bundles manifest file for a given runtime platform. 
+        /// </summary>
+        /// <returns></returns>
+        public static string GetBundlePlatformManifestFileLocation(RuntimePlatform runtimePlatform, bool isServer)
+        {
+            var platformName = GetRuntimePlatformName(runtimePlatform, isServer);
+            return System.IO.Path.Combine(Application.streamingAssetsPath, "bundles", platformName, $"{platformName}.manifest");
+        }
+
+        /// <summary>
+        /// Returns the name (ONLY the name) of the folder used for the current runtime platform. This folder will be located in streaming assets. 
+        /// </summary>
+        /// <returns></returns>
+        public static string GetCurrentRuntimePlatformName()
+        {
+            var isServer = false;
+#if UNITY_SERVER
+                isServer  = true;
+#endif
+            var platformName = GetRuntimePlatformName(Application.platform, isServer);
+            return platformName;
+        }
     }
 
     public class WaitUntilReadyBatched : CustomYieldInstruction

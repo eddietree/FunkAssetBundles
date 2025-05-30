@@ -159,6 +159,13 @@ namespace FunkAssetBundles
             BuildBundlesForTarget(buildTarget, forceBundleRebuild: true, isDedicatedServer: isServer);
         }
 
+        public static string GetRuntimePlatformNameFromBuildTarget(BuildTarget buildTarget, bool isDedicatedServer)
+        {
+            var runtime = ConvertBuildTargetToRuntime(buildTarget);
+            var runtimeName = AssetBundleService.GetRuntimePlatformName(runtime, isDedicatedServer);
+            return runtimeName; 
+        }
+
         public static void BuildBundlesForTarget(BuildTarget platform, bool forceBundleRebuild = false, bool isDedicatedServer = false, 
             AssetBundleData forceSingleBundleBuildDebug = null, AssetBundleData[] onlyRebuildSpecificBundles = null, string[] onlyRebuildSpecificCategories = null)
         {
@@ -632,6 +639,24 @@ namespace FunkAssetBundles
             DeployBundlesForTarget(EditorUserBuildSettings.activeBuildTarget, isServer); 
         }
 
+        public static void UndeployBundles()
+        {
+            var deployPath = GetBundlesDeployFolder();
+
+            if (Directory.Exists(deployPath))
+            {
+                Debug.LogFormat("AssetBundleExporter.UndeployBundles: clearing existing deployment...");
+                Directory.Delete(deployPath, true);
+            }
+
+            // no real way to know if the delete is still pending
+            for (int i = 0; i < 3; ++i)
+            {
+                if (Directory.Exists(deployPath))
+                    System.Threading.Thread.Sleep(100);
+            }
+        }
+
         public static void DeployBundlesForTarget(BuildTarget platform, bool isDedicatedServer)
         {
             var runtime = ConvertBuildTargetToRuntime(platform);
@@ -653,18 +678,7 @@ namespace FunkAssetBundles
 
             Debug.LogFormat("AssetBundleExporter.DeployBundlesForTarget: cleaning existing bundles...");
 
-            if (Directory.Exists(deployPath))
-            {
-                Debug.LogFormat("AssetBundleExporter.DeployBundlesForTarget: clearing existing deployment...");
-                Directory.Delete(deployPath, true);
-            }
-
-            // no real way to know if the delete is still pending
-            for (int i = 0; i < 3; ++i)
-            {
-                if (Directory.Exists(deployPath))
-                    System.Threading.Thread.Sleep(100);
-            }
+            UndeployBundles(); 
 
             if (Directory.Exists(deployPath))
             {
