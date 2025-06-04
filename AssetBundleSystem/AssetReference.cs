@@ -334,6 +334,12 @@ namespace FunkAssetBundles
             asset = null; 
             return false; 
         }
+
+        public static void EditorClearCache()
+        {
+            _editorAssetCache.Clear();
+            _cachedAssetPaths.Clear();
+        }
     }
 #endif
 

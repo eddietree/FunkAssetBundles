@@ -12,6 +12,7 @@ namespace FunkAssetBundles
     using System.Collections.Generic;
     using UnityEngine;
     using UnityEngine.Profiling;
+    using static FunkAssetBundles.AssetBundleService;
 
     [DefaultExecutionOrder(-10000)]
     public class AssetBundleService : MonoBehaviour
@@ -63,6 +64,11 @@ namespace FunkAssetBundles
             return System.IO.Path.Combine(Application.streamingAssetsPath, "bundles");
         }
 
+        public static string GetBundlesWebFolder()
+        {
+            return System.IO.Path.Combine(Application.persistentDataPath, "bundles");
+        }
+
         public const bool PRELOAD_BUNDLES_IN_MEMORY = false;
         public const bool UNLOAD_BUNDLES_ON_INITIALIZE = true;
         public const bool ASYNC_INITIALIZE_FROM_LOADS = false; // deadlock issues? 
@@ -95,7 +101,7 @@ namespace FunkAssetBundles
                 }
             }
 
-            var asset = reference.EditorLoadAsset(this);
+            var asset = reference.EditorLoadAsset(this, logDeleted: logErrors);
 
             if (CACHE_IN_EDITOR && Application.isPlaying)
             {
@@ -157,6 +163,127 @@ namespace FunkAssetBundles
         [System.NonSerialized] private Dictionary<string, AssetBundle> _bundleCache = new Dictionary<string, AssetBundle>(System.StringComparer.Ordinal);
         [System.NonSerialized] private Dictionary<string, AssetCache> _assetCache = new Dictionary<string, AssetCache>(System.StringComparer.Ordinal); // key = GUID+SubAssetReference
         [System.NonSerialized] private Coroutine _prewarmRoutine;
+        [System.NonSerialized] private ReferenceTracker _referenceTracker = new ReferenceTracker(); 
+
+        [System.Serializable]
+        public class ReferenceTracker
+        {
+            public Dictionary<AssetBundle, BundleReferenceCounter> bundleTrackers = new Dictionary<AssetBundle, BundleReferenceCounter>(); 
+
+            [System.Serializable]
+            public class BundleReferenceCounter
+            {
+                public Dictionary<string, int> referenceCounters = new Dictionary<string, int>();
+            }
+
+            public void TrackReference<T>(AssetReference<T> reference) where T : UnityEngine.Object
+            {
+#if UNITY_EDITOR
+                if(AssetBundleService.EditorGetAssetDatabaseEnabled())
+                {
+                    return;
+                }
+#endif
+
+                var assetBundle = AssetBundleService.Instance.TryGetAssetBundle(reference, allowInitializeBundle: false); 
+                if (assetBundle == null) return;
+
+                if(bundleTrackers.TryGetValue(assetBundle, out var bundleCounterData))
+                {
+                    if(bundleCounterData.referenceCounters.TryGetValue(reference.Guid, out int referenceCounterData))
+                    {
+                        referenceCounterData += 1;
+                        bundleCounterData.referenceCounters[reference.Guid] = referenceCounterData;
+                    }
+                    else
+                    {
+                        bundleCounterData.referenceCounters.Add(reference.Guid, 1); 
+                    }
+                }
+                else
+                {
+                    var newBundleCounter = new BundleReferenceCounter();
+                        newBundleCounter.referenceCounters.Add(reference.Guid, 1);
+
+                    bundleTrackers.Add(assetBundle, newBundleCounter);
+                }
+            }
+
+            public void DecrementReference<T>(AssetReference<T> reference) where T : UnityEngine.Object
+            {
+#if UNITY_EDITOR
+                if (AssetBundleService.EditorGetAssetDatabaseEnabled())
+                {
+                    return;
+                }
+#endif
+
+                var assetBundle = AssetBundleService.Instance.TryGetAssetBundle(reference, allowInitializeBundle: false);
+                if (assetBundle == null) return;
+
+                if (bundleTrackers.TryGetValue(assetBundle, out var bundleCounterData))
+                {
+                    if (bundleCounterData.referenceCounters.TryGetValue(reference.Guid, out int referenceCounterData))
+                    {
+                        referenceCounterData -= 1;
+                        bundleCounterData.referenceCounters[reference.Guid] = referenceCounterData;
+
+                        if(referenceCounterData <= 0)
+                        {
+                            bundleCounterData.referenceCounters.Remove(reference.Guid); 
+                        }
+                    }
+                }
+            }
+
+            public void ReleaseReference<T>(AssetReference<T> reference) where T : UnityEngine.Object
+            {
+#if UNITY_EDITOR
+                if (AssetBundleService.EditorGetAssetDatabaseEnabled())
+                {
+                    return;
+                }
+#endif
+
+                var assetBundle = AssetBundleService.Instance.TryGetAssetBundle(reference, allowInitializeBundle: false);
+                if (assetBundle == null) return;
+
+                if (bundleTrackers.TryGetValue(assetBundle, out var bundleCounterData))
+                {
+                    bundleCounterData.referenceCounters.Remove(reference.Guid);
+                }
+            }
+
+            public bool GetReferenceTotalRefCountForBundle<T>(AssetReference<T> reference, out AssetBundle bundleData, out int count) where T : UnityEngine.Object
+            {
+                bundleData = null;
+                count = 0;
+
+#if UNITY_EDITOR
+                if (AssetBundleService.EditorGetAssetDatabaseEnabled())
+                {
+                    return false;
+                }
+#endif
+
+                var assetBundle = AssetBundleService.Instance.TryGetAssetBundle(reference, allowInitializeBundle: false);
+                if (assetBundle == null) return false;
+
+                if (bundleTrackers.TryGetValue(assetBundle, out var bundleCounterData))
+                {
+                    bundleData = assetBundle;
+                    count = bundleCounterData.referenceCounters.Count;
+                    return true; 
+                }
+
+                return false; 
+            }
+
+            public void ResetTracker()
+            {
+                bundleTrackers.Clear(); 
+            }
+        }
 
         private struct AssetCache
         {
@@ -481,6 +608,8 @@ namespace FunkAssetBundles
             _assetCache.Clear();
             _prewarmAssetRequests.Clear();
 
+            _referenceTracker.ResetTracker(); 
+
             // unload anything left over 
             AssetBundle.UnloadAllAssetBundles(destroyInstancesToo);
 
@@ -503,6 +632,38 @@ namespace FunkAssetBundles
             // unload this bundle 
             assetBundle.Unload(destroyInstancesToo);
             
+            _bundleCache.Remove(bundleCacheKey);
+
+            // remove cache entries related to this bundle 
+            var cacheToClear = new List<string>();
+
+            foreach (var cache in _assetCache)
+            {
+                var data = cache.Value;
+                if (bundleName.Equals(data.BundleName, System.StringComparison.Ordinal))
+                {
+                    cacheToClear.Add(cache.Key);
+                }
+            }
+
+            foreach (var key in cacheToClear)
+            {
+                _assetCache.Remove(key);
+            }
+        }
+
+        private IEnumerator UnloadSingleRealBundleAsync(AssetBundle assetBundle, bool destroyInstancesToo, string bundleCacheKey)
+        {
+            var bundleName = assetBundle.name;
+
+            // unload this bundle 
+            var unloadOperation = assetBundle.UnloadAsync(destroyInstancesToo);
+
+            while(!unloadOperation.isDone)
+            {
+                yield return null; 
+            }
+
             _bundleCache.Remove(bundleCacheKey);
 
             // remove cache entries related to this bundle 
@@ -554,6 +715,40 @@ namespace FunkAssetBundles
                 UnloadSingleRealBundle(assetBundle, destroyInstancesToo, bundleData.name); 
             }
         }
+
+        public IEnumerator UnloadSingleBundleDataAsync(AssetBundleData bundleData, bool destroyInstancesToo)
+        {
+            
+            if (bundleData.PackSeparately)
+            {
+                foreach (var assetReferenceData in bundleData.Assets)
+                {
+                    var bundleName = BuildPackedAssetBundleName(bundleData, assetReferenceData.GUID);
+
+                    if (!_bundleCache.TryGetValue(bundleName, out var assetBundle))
+                    {
+                        continue;
+                    }
+
+                    yield return UnloadSingleRealBundleAsync(assetBundle, destroyInstancesToo, bundleName);
+                }
+            }
+            else
+            {
+                if (!_bundleCache.TryGetValue(bundleData.name, out var assetBundle))
+                {
+                    yield break;
+                }
+
+                if (assetBundle == null)
+                {
+                    yield break;
+                }
+
+                yield return UnloadSingleRealBundleAsync(assetBundle, destroyInstancesToo, bundleData.name);
+            }
+        }
+
 
         [System.NonSerialized] private Coroutine _initializeAsyncRoutine;
         [System.NonSerialized] private bool _initialized;
@@ -756,6 +951,12 @@ namespace FunkAssetBundles
             var platformName = GetRuntimePlatformName(Application.platform, isDedicatedServer);
             var assetBundleDataName = GetBundleFilenameFromBundleName(Application.platform, isDedicatedServer, assetBundleData.name);
             var assetBundleRoot = GetBundlesDeployFolder();
+
+            if(assetBundleData.IsDownloadedExternally)
+            {
+                assetBundleRoot = GetBundlesWebFolder(); 
+            }
+
             var assetBundleRef = $"{assetBundleRoot}/{assetBundleDataName}";
 
             if (assetBundleData.PackSeparately)
@@ -954,6 +1155,12 @@ namespace FunkAssetBundles
             var platformName = GetRuntimePlatformName(Application.platform, isDedicatedServer);
             var assetBundleDataName = GetBundleFilenameFromBundleName(Application.platform, isDedicatedServer, assetBundleData.name);
             var assetBundleRoot = GetBundlesDeployFolder();
+
+            if (assetBundleData.IsDownloadedExternally)
+            {
+                assetBundleRoot = GetBundlesWebFolder();
+            }
+
             var assetBundleRef = $"{assetBundleRoot}/{assetBundleDataName}";
 
             AssetBundle assetBundle = null;
@@ -1086,6 +1293,8 @@ namespace FunkAssetBundles
 
                 return null;
             }
+
+            _referenceTracker.TrackReference(reference);
 
 #if UNITY_EDITOR
             if (EditorGetAssetDatabaseEnabled())
@@ -1588,6 +1797,8 @@ namespace FunkAssetBundles
                     // Bundle = bundle,
                     BundleName = bundle.name,
                 });
+
+                _referenceTracker.TrackReference(assetReference);
             }
         }
 
@@ -1736,6 +1947,12 @@ namespace FunkAssetBundles
             var platformName = GetRuntimePlatformName(Application.platform, isDedicatedServer);
             var assetBundleDataName = GetBundleFilenameFromBundleName(Application.platform, isDedicatedServer, assetBundleData.name);
             var assetBundleRoot = GetBundlesDeployFolder();
+            
+            if (assetBundleData.IsDownloadedExternally)
+            {
+                assetBundleRoot = GetBundlesWebFolder();
+            }
+
             var assetBundleRef = $"{assetBundleRoot}/{assetBundleDataName}";
             assetBundleRef = assetBundleData.GetPackedBundleDataName(bundleAssetReferenceData, platformName, assetBundleRoot, assetBundleRef);
 
@@ -1966,6 +2183,8 @@ namespace FunkAssetBundles
                 yield break;
             }
 
+            _referenceTracker.TrackReference(reference);
+
 #if UNITY_EDITOR
             if (EditorGetAssetDatabaseEnabled())
             {
@@ -2117,6 +2336,8 @@ namespace FunkAssetBundles
                 yield break;
             }
 
+            _referenceTracker.TrackReference(reference);
+
 #if UNITY_EDITOR
             if (EditorGetAssetDatabaseEnabled())
             {
@@ -2216,6 +2437,83 @@ namespace FunkAssetBundles
             }
 
             yield return handle;
+        }
+
+        /// <summary>
+        /// Informs the AssetBundleService that this particular reference is NOT used by anything else in the game. 
+        /// When a particular bundle is informed that none of it's assets are no longer in use, this function will also automatically unload that bundle fully. 
+        /// When this unload happens, expect ALL the assets associated to actually vanish from memory.
+        /// Only call this if you are 100% sure assets associated to the bundle this reference belong to are GONE.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="reference"></param>
+        /// <returns></returns>
+        public IEnumerator ReleaseReferenceAsync<T>(AssetReference<T> reference) where T : UnityEngine.Object
+        {
+            var cachedAsset = TryGetCachedAsset(reference);
+            UnloadSingleAsset(cachedAsset, reference);
+            
+            _referenceTracker.ReleaseReference(reference);
+            if(_referenceTracker.GetReferenceTotalRefCountForBundle(reference, out var assetBundle, out var count) && count == 0)
+            {
+                var bundleData = GetAssetBundleContainer(reference);
+                if(bundleData != null)
+                {
+                    if(bundleData.PackSeparately)
+                    {
+                        var bundleName = BuildPackedAssetBundleName(bundleData, reference.Guid);
+                        yield return UnloadSingleRealBundleAsync(assetBundle, true, bundleName); 
+                    }
+                    else
+                    {
+                        yield return UnloadSingleRealBundleAsync(assetBundle, true, bundleData.name); 
+                    }
+                }
+            }
+        }
+
+        public void ReleaseReference<T>(AssetReference<T> reference) where T : UnityEngine.Object
+        {
+            var cachedAsset = TryGetCachedAsset(reference);
+            UnloadSingleAsset(cachedAsset, reference);
+
+            _referenceTracker.ReleaseReference(reference);
+
+            if (_referenceTracker.GetReferenceTotalRefCountForBundle(reference, out var assetBundle, out var count) && count == 0)
+            {
+                // Debug.Log($"[AssetBundleService]: Unloading bundle: {assetBundle.name}");
+
+                var bundleData = GetAssetBundleContainer(reference);
+                if (bundleData != null)
+                {
+                    if (bundleData.PackSeparately)
+                    {
+                        var bundleName = BuildPackedAssetBundleName(bundleData, reference.Guid);
+                        UnloadSingleRealBundle(assetBundle, true, bundleName);
+                    }
+                    else
+                    {
+                        UnloadSingleRealBundle(assetBundle, true, bundleData.name);
+                    }
+                }
+            }
+        }
+
+        public void GatherBundleStats(out int bundleCount, out int referenceCount)
+        {
+            bundleCount = 0;
+            referenceCount = 0;
+
+            foreach (var entry in _referenceTracker.bundleTrackers)
+            {
+                bundleCount++;
+
+                var trackedBundleData = entry.Value;
+                foreach(var counterEntry in trackedBundleData.referenceCounters)
+                {
+                    referenceCount += counterEntry.Value;
+                }
+            }
         }
 
         /// <summary>
@@ -2460,9 +2758,54 @@ namespace FunkAssetBundles
         /// <summary>
         /// Note: This will not automatically unload bundle data. It just destroys the runtime data associated with this asset. The data may still be cached by the internal asset bundle system. 
         /// </summary>
-        public void UnloadSingleAsset<T>(T asset, AssetReference<T> assetReferencce) where T : Object
+        public void UnloadSingleAsset<T>(T asset, AssetReference<T> assetReferencce, bool tryUnloadPrefabAssets = false) where T : Object
         {
-            Resources.UnloadAsset(asset);
+            if(asset != null)
+            {
+                // try to unload individual assets of a prefab?
+                if (asset is GameObject unloadingPrefab && tryUnloadPrefabAssets)
+                {
+                    var meshFilters = unloadingPrefab.GetComponentsInChildren<MeshFilter>(true);
+                    foreach (var meshFilter in meshFilters)
+                    {
+                        var sharedMesh = meshFilter.sharedMesh;
+                        if (sharedMesh != null)
+                        {
+                            Resources.UnloadAsset(sharedMesh);
+                        }
+                    }
+
+                    var meshRenderers = unloadingPrefab.GetComponentsInChildren<MeshRenderer>(true);
+                    foreach (var meshRenderer in meshRenderers)
+                    {
+                        var sharedMaterials = meshRenderer.sharedMaterials;
+                        foreach (var sharedMaterial in sharedMaterials)
+                        {
+                            if (sharedMaterial != null)
+                            {
+                                Resources.UnloadAsset(sharedMaterial);
+                            }
+                        }
+                    }
+
+                    var audioSources = unloadingPrefab.GetComponentsInChildren<AudioSource>(true);
+                    foreach (var audioSource in audioSources)
+                    {
+                        if (audioSource.clip != null)
+                        {
+                            Resources.UnloadAsset(audioSource.clip);
+                        }
+                    }
+                }
+
+                // not allowed to directly unload prefabs or components 
+                var validType = asset is not GameObject && asset is not Component; 
+                if(validType)
+                {
+                    Resources.UnloadAsset(asset);
+                }
+            }
+
             var cacheKey = assetReferencce.GetCacheKey();
             _assetCache.Remove(cacheKey); 
         }

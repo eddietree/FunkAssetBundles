@@ -910,6 +910,21 @@ namespace FunkAssetBundles
             }
         }
 
+        public static void MarkAllAssetsExternallyLoaded(bool externallyLoaded)
+        {
+            var results = new List<AssetBundleData>();
+            AssetDatabaseE.LoadAssetsOfType(results);
+
+            Undo.RecordObjects(results.ToArray(), "MarkExternal");
+            for (var i = 0; i < results.Count; ++i)
+            {
+                var bundle = results[i];
+                    bundle.IsDownloadedExternally = externallyLoaded;
+
+                EditorUtility.SetDirty(bundle); 
+            }
+        }
+
         [System.Serializable]
         private class AssetBundleBuildDefinitions
         {

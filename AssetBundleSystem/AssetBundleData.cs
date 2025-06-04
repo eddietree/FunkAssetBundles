@@ -19,6 +19,7 @@ namespace FunkAssetBundles
         [Tooltip("Hide this bundle from the FunkyBundle dropdown list.")] public bool HideInLists;
         [Tooltip("In Editor, loads from this bundle will NOT use AssetDatabase, and instead will only use real asset bundles. Only enable this if you understand the implications.")] public bool ForceLoadInEditor;
         [Tooltip("When the 'isDedicatedServer' is set in the AssetBundleExporter API, this bundle will be skipped. Only enable this if you understand the implications.")] public bool DoNotBuildForDedicatedServer;
+        [Tooltip("When true, the plugin will search the download folder for the .bundle file. You are responsible for downloading these kinds of bundles, the plugin does not do this automatically.")] public bool IsDownloadedExternally;
 
         [Tooltip("Lower value will result in this bundle being built before other bundles (just puts it in the start of the build array). Otherwise, the order should be considered random.")]
         public int buildOrder = 0; 

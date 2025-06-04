@@ -36,6 +36,7 @@ namespace FunkAssetBundles
         private SerializedProperty PackMode;
         private SerializedProperty PackCategories;
         private SerializedProperty buildOrder;
+        private SerializedProperty IsDownloadedExternally;
 
         private static bool _editorFoldout_browse_tools;
 
@@ -52,6 +53,7 @@ namespace FunkAssetBundles
             PackMode = serializedObject.FindProperty("PackMode");
             PackCategories = serializedObject.FindProperty("PackCategories");
             buildOrder = serializedObject.FindProperty("buildOrder");
+            IsDownloadedExternally = serializedObject.FindProperty("IsDownloadedExternally");
         }
 
         // dependency stuff 
@@ -580,6 +582,7 @@ namespace FunkAssetBundles
                     EditorGUILayout.PropertyField(HideInLists);
                     EditorGUILayout.PropertyField(ForceLoadInEditor);
                     EditorGUILayout.PropertyField(DoNotBuildForDedicatedServer);
+                    EditorGUILayout.PropertyField(IsDownloadedExternally);
                     EditorGUILayout.PropertyField(buildOrder);
 
                     EditorGUILayout.PropertyField(PackSeparately);
