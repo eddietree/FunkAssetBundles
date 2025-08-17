@@ -38,6 +38,7 @@ namespace FunkAssetBundles
         }
 
         [System.NonSerialized] private Dictionary<string, int> _lookupTable = new Dictionary<string, int>(System.StringComparer.Ordinal);
+        [System.NonSerialized] private bool _lookupTableEverRefreshed;
 
         public void RefreshLookupTable()
         {
@@ -68,6 +69,13 @@ namespace FunkAssetBundles
 
                 _lookupTable.Add(asset.GUID, i);
             }
+
+            _lookupTableEverRefreshed = true; 
+        }
+
+        public bool LookupTableNeedsRefresh()
+        {
+            return !_lookupTableEverRefreshed;
         }
 
         public AssetBundleReferenceData FindByGuidRaw(string guid)
@@ -115,17 +123,27 @@ namespace FunkAssetBundles
                 return defaultBundleFilename; 
             }
 
+            var allowReferenceCache = Application.isPlaying && AssetBundleService.ALLOW_REFERENCE_CACHE_AT_RUNTIME;
+            if (allowReferenceCache && !string.IsNullOrEmpty(dataReference._packedBundleDataNameCache))
+            {
+                return dataReference._packedBundleDataNameCache;
+            }
+            
             switch(PackMode)
             {
                 case PackSeparatelyMode.EachFile:
-                    return $"{assetBundleRoot}/{platformName}/{dataReference.GUID.ToLowerInvariant()}.bundle";
+                    dataReference._packedBundleDataNameCache = $"{assetBundleRoot}/{platformName}/{dataReference.GUID}.bundle".ToLowerInvariant();
+                    return dataReference._packedBundleDataNameCache;
                 case PackSeparatelyMode.ByCategory:
                     var packCategory = dataReference.PackCategory;
                     if (string.IsNullOrEmpty(packCategory)) packCategory = "default";
-                    return $"{assetBundleRoot}/{platformName}/{name.ToLowerInvariant()}_{packCategory.ToLower()}.bundle";
+
+                    dataReference._packedBundleDataNameCache = $"{assetBundleRoot}/{platformName}/{name}_{packCategory}.bundle".ToLowerInvariant();
+                    return dataReference._packedBundleDataNameCache; 
             }
 
-            return defaultBundleFilename;
+            dataReference._packedBundleDataNameCache = defaultBundleFilename;
+            return dataReference._packedBundleDataNameCache;
         }
 
 #if UNITY_EDITOR

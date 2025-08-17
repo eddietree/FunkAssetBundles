@@ -439,7 +439,7 @@ namespace FunkAssetBundles
             return assetReference;
         }
 
-        public static AssetReference<T> CreateFromAssetPath(string assetPath, bool ensureInBundle, AssetBundleData targetBundle = null) // todo: allow specifying bundle 
+        public static AssetReference<T> CreateFromAssetPath(string assetPath, bool ensureInBundle, AssetBundleData targetBundle = null, string subAssetName = null) // todo: allow specifying bundle 
         {
             if (string.IsNullOrEmpty(assetPath))
             {
@@ -447,7 +447,14 @@ namespace FunkAssetBundles
             }
 
             var guid = AssetDatabase.AssetPathToGUID(assetPath);
-            return CreateFromGuid(guid, ensureInBundle, targetBundle: targetBundle);
+            var assetReference = CreateFromGuid(guid, ensureInBundle, targetBundle: targetBundle);
+
+            if(!string.IsNullOrEmpty(subAssetName))
+            {
+                assetReference.SubAssetReference = subAssetName;
+            }
+
+            return assetReference;
         }
 #endif
 

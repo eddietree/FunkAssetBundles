@@ -82,4 +82,6 @@ public class AssetBundleReferenceData
     {
         return GUID.GetHashCode(); 
     }
+
+    [System.NonSerialized] public string _packedBundleDataNameCache;
 }

@@ -32,6 +32,10 @@ namespace FunkAssetBundles
                 return;
             }
 
+            // domain reload shenanigans 
+            _bundleDeployFolderCache = null;
+            _bundleWebFolderCache = null;
+
             Instance = this;
             // Instance.Initialize(); 
         }
@@ -59,19 +63,33 @@ namespace FunkAssetBundles
             return sb.ToString();
         }
 
+        private static string _bundleDeployFolderCache;
+        private static string _bundleWebFolderCache;
+
         public static string GetBundlesDeployFolder()
         {
-            return System.IO.Path.Combine(Application.streamingAssetsPath, "bundles");
+            if(string.IsNullOrEmpty(_bundleDeployFolderCache))
+            {
+                _bundleDeployFolderCache = System.IO.Path.Combine(Application.streamingAssetsPath, "bundles");
+            }
+
+            return _bundleDeployFolderCache;
         }
 
         public static string GetBundlesWebFolder()
         {
-            return System.IO.Path.Combine(Application.persistentDataPath, "bundles");
+            if(string.IsNullOrEmpty(_bundleWebFolderCache))
+            {
+                _bundleWebFolderCache = System.IO.Path.Combine(Application.persistentDataPath, "bundles");
+            }
+
+            return _bundleWebFolderCache; 
         }
 
         public const bool PRELOAD_BUNDLES_IN_MEMORY = false;
         public const bool UNLOAD_BUNDLES_ON_INITIALIZE = true;
         public const bool ASYNC_INITIALIZE_FROM_LOADS = false; // deadlock issues? 
+        public const bool ALLOW_REFERENCE_CACHE_AT_RUNTIME = true; // disable if you need to swap platforms or anything weird like that, AT RUNTIME 
 
 #if UNITY_EDITOR
         // when true, the editor will load things from AssetDatabase instead of from asset bundles. 
@@ -185,7 +203,7 @@ namespace FunkAssetBundles
                 }
 #endif
 
-                var assetBundle = AssetBundleService.Instance.TryGetAssetBundle(reference, allowInitializeBundle: false); 
+                var assetBundle = AssetBundleService.Instance.TryGetAssetBundle(reference, allowInitializeBundle: false, logErrors: false); 
                 if (assetBundle == null) return;
 
                 if(bundleTrackers.TryGetValue(assetBundle, out var bundleCounterData))
@@ -218,7 +236,7 @@ namespace FunkAssetBundles
                 }
 #endif
 
-                var assetBundle = AssetBundleService.Instance.TryGetAssetBundle(reference, allowInitializeBundle: false);
+                var assetBundle = AssetBundleService.Instance.TryGetAssetBundle(reference, allowInitializeBundle: false, logErrors: false);
                 if (assetBundle == null) return;
 
                 if (bundleTrackers.TryGetValue(assetBundle, out var bundleCounterData))
@@ -245,7 +263,7 @@ namespace FunkAssetBundles
                 }
 #endif
 
-                var assetBundle = AssetBundleService.Instance.TryGetAssetBundle(reference, allowInitializeBundle: false);
+                var assetBundle = AssetBundleService.Instance.TryGetAssetBundle(reference, allowInitializeBundle: false, logErrors: false);
                 if (assetBundle == null) return;
 
                 if (bundleTrackers.TryGetValue(assetBundle, out var bundleCounterData))
@@ -266,7 +284,7 @@ namespace FunkAssetBundles
                 }
 #endif
 
-                var assetBundle = AssetBundleService.Instance.TryGetAssetBundle(reference, allowInitializeBundle: false);
+                var assetBundle = AssetBundleService.Instance.TryGetAssetBundle(reference, allowInitializeBundle: false, logErrors: false);
                 if (assetBundle == null) return false;
 
                 if (bundleTrackers.TryGetValue(assetBundle, out var bundleCounterData))
@@ -944,7 +962,10 @@ namespace FunkAssetBundles
             // initialize the quick lookup table 
             Profiler.BeginSample("RefreshLookupTable");
             {
-                assetBundleData.RefreshLookupTable();
+                if(assetBundleData.LookupTableNeedsRefresh())
+                {
+                    assetBundleData.RefreshLookupTable();
+                }
             }
             Profiler.EndSample();
 
@@ -1302,7 +1323,7 @@ namespace FunkAssetBundles
                 var assetBundleData = GetAssetBundleContainer(reference, logErrors: logErrors);
                 if(assetBundleData == null || !assetBundleData.ForceLoadInEditor)
                 {
-                    return EditorLoadFromAssetDatabase(reference);
+                    return EditorLoadFromAssetDatabase(reference, logErrors: logErrors);
                 }
             }
 #endif
@@ -1944,6 +1965,14 @@ namespace FunkAssetBundles
                 return string.Empty;
             }
 
+            // shortcut: see if this is already set.. 
+            var allowReferenceCache = Application.isPlaying && AssetBundleService.ALLOW_REFERENCE_CACHE_AT_RUNTIME;
+            if (allowReferenceCache && !string.IsNullOrEmpty(bundleAssetReferenceData._packedBundleDataNameCache))
+            {
+                return bundleAssetReferenceData._packedBundleDataNameCache;
+            }
+
+            // if not, rebuild from scratch 
             var platformName = GetRuntimePlatformName(Application.platform, isDedicatedServer);
             var assetBundleDataName = GetBundleFilenameFromBundleName(Application.platform, isDedicatedServer, assetBundleData.name);
             var assetBundleRoot = GetBundlesDeployFolder();
@@ -1996,7 +2025,11 @@ namespace FunkAssetBundles
                 var loadedAssetBundle = SyncInitializeBundle(assetBundleData, specificAssetGuid: reference.Guid);
                 if(loadedAssetBundle == null)
                 {
-                    Debug.LogError($"[AssetBundleService]: Failed to TryGetAssetBundle() because SyncInitializeBundle() failed.");
+                    if(logErrors)
+                    {
+                        Debug.LogError($"[AssetBundleService]: Failed to TryGetAssetBundle() because SyncInitializeBundle() failed.");
+                    }
+
                     return null; 
                 }
 
@@ -2133,7 +2166,11 @@ namespace FunkAssetBundles
                     SubAssetReference = reference.SubAssetReference,
                 });
 
+#if UNITY_EDITOR
+                SyncInitializeBundle(assetBundleData, specificAssetGuid: reference.Guid); 
+#else
                 yield return InitializeSingleBundle(assetBundleData, specificAssetGuid: reference.Guid);
+#endif
 
                 if (!GetIsInitialized())
                 {
