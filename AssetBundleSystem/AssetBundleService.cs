@@ -20,6 +20,10 @@ namespace FunkAssetBundles
         public List<AssetBundleData> AssetBundleDatas = new List<AssetBundleData>();
         public static AssetBundleService Instance;
 
+        [Tooltip("When initializing, this will trigger ALL bundles to unload. " +
+            "If you are using Addressables or some other bundle manager in your project alongside this one, consider disabling this toggle.")]
+        public bool AutomaticallyUnloadBundlesOnInitialize = true;
+
         private void OnEnable()
         {
             if (Instance != null && Instance != this)
@@ -87,7 +91,6 @@ namespace FunkAssetBundles
         }
 
         public const bool PRELOAD_BUNDLES_IN_MEMORY = false;
-        public const bool UNLOAD_BUNDLES_ON_INITIALIZE = true;
         public const bool ASYNC_INITIALIZE_FROM_LOADS = false; // deadlock issues? 
         public const bool ALLOW_REFERENCE_CACHE_AT_RUNTIME = true; // disable if you need to swap platforms or anything weird like that, AT RUNTIME 
 
@@ -702,6 +705,35 @@ namespace FunkAssetBundles
             }
         }
 
+        public void UnloadSingleBundleData(AssetBundleData bundleData, string guid, bool destroyInstancesToo)
+        {
+            if (bundleData.PackSeparately)
+            {
+                var bundleName = BuildPackedAssetBundleName(bundleData, guid);
+
+                if (!_bundleCache.TryGetValue(bundleName, out var assetBundle))
+                {
+                    return;
+                }
+
+                UnloadSingleRealBundle(assetBundle, destroyInstancesToo, bundleName);
+            }
+            else
+            {
+                if (!_bundleCache.TryGetValue(bundleData.name, out var assetBundle))
+                {
+                    return;
+                }
+
+                if (assetBundle == null)
+                {
+                    return;
+                }
+
+                UnloadSingleRealBundle(assetBundle, destroyInstancesToo, bundleData.name);
+            }
+        }
+
         public void UnloadSingleBundleData(AssetBundleData bundleData, bool destroyInstancesToo)
         {
             if(bundleData.PackSeparately)
@@ -810,7 +842,7 @@ namespace FunkAssetBundles
 #endif
 
             // fixes an issue in the editor where bundles sometimes do not unload while shutting down play mode 
-            if(UNLOAD_BUNDLES_ON_INITIALIZE)
+            if(AutomaticallyUnloadBundlesOnInitialize)
             {
                 AssetBundle.UnloadAllAssetBundles(true);
             }
