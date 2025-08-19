@@ -132,13 +132,15 @@ namespace FunkAssetBundles
             switch(PackMode)
             {
                 case PackSeparatelyMode.EachFile:
-                    dataReference._packedBundleDataNameCache = $"{assetBundleRoot}/{platformName}/{dataReference.GUID}.bundle".ToLowerInvariant();
+                    var eachFileName = $"{platformName}/{dataReference.GUID}.bundle".ToLowerInvariant(); 
+                    dataReference._packedBundleDataNameCache = $"{assetBundleRoot}/{eachFileName}";
                     return dataReference._packedBundleDataNameCache;
                 case PackSeparatelyMode.ByCategory:
                     var packCategory = dataReference.PackCategory;
                     if (string.IsNullOrEmpty(packCategory)) packCategory = "default";
 
-                    dataReference._packedBundleDataNameCache = $"{assetBundleRoot}/{platformName}/{name}_{packCategory}.bundle".ToLowerInvariant();
+                    var byCategoryName = $"{platformName}/{name}_{packCategory}.bundle".ToLowerInvariant();
+                    dataReference._packedBundleDataNameCache = $"{assetBundleRoot}/{byCategoryName}";
                     return dataReference._packedBundleDataNameCache; 
             }
 
